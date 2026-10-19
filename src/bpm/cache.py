@@ -1,0 +1,64 @@
+import numpy as np
+
+from .channels import CHANNEL_ORDER, assemble_channels
+from .edf_io import read_channels
+from .ground_truth import ecg_to_hr_curve
+from .manifest import EXERCISE_DIR, MULTISITE_DIR
+from .preprocessing import bandpass_filter
+from .windowing import make_windows
+
+WINDOW_S, STRIDE_S = 10, 2
+MULTISITE_CAP_PER_SUBJECT = 2000
+CAP_SEED = 42
+
+
+def process_file(file_path, has_acc):
+    labels = ["ECG", "PPG"] + (["ACC_X", "ACC_Y", "ACC_Z"] if has_acc else [])
+    signals, fs = read_channels(file_path, labels)
+
+    ppg_filtered = bandpass_filter(signals["PPG"], fs)
+    acc = (
+        {k: signals[k] for k in ("ACC_X", "ACC_Y", "ACC_Z")} if has_acc else None
+    )
+    channels = assemble_channels(ppg_filtered, acc)
+
+    hr_curve = ecg_to_hr_curve(signals["ECG"], fs)
+    windows, labels_arr = make_windows(
+        {name: channels[name] for name in CHANNEL_ORDER},
+        hr_curve,
+        fs,
+        window_s=WINDOW_S,
+        stride_s=STRIDE_S,
+    )
+    return windows, labels_arr
+
+
+def build_subject_cache(subject_rows, seed=CAP_SEED):
+    sub_dataset = subject_rows[0]["sub_dataset"]
+    has_acc = sub_dataset == EXERCISE_DIR
+
+    all_windows, all_labels = [], []
+    for row in subject_rows:
+        windows, labels = process_file(row["file_path"], has_acc)
+        if len(windows):
+            all_windows.append(windows)
+            all_labels.append(labels)
+
+    if not all_windows:
+        return None
+
+    windows = np.concatenate(all_windows).astype(np.float32)
+    labels = np.concatenate(all_labels).astype(np.float32)
+
+    if sub_dataset == MULTISITE_DIR and len(windows) > MULTISITE_CAP_PER_SUBJECT:
+        rng = np.random.default_rng(seed)
+        keep = rng.choice(len(windows), size=MULTISITE_CAP_PER_SUBJECT, replace=False)
+        windows, labels = windows[keep], labels[keep]
+
+    dataset_source = np.full(len(windows), sub_dataset)
+    return {
+        "windows": windows,
+        "labels": labels,
+        "dataset_source": dataset_source,
+        "subject_id": subject_rows[0]["global_subject_id"],
+    }
