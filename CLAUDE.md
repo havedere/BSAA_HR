@@ -9,12 +9,21 @@ Wire up GPU passthrough for training (currently CPU-only, per plan.md's locked d
   container, but the **nested** Docker daemon has no `nvidia-container-runtime` registered —
   confirmed via `docker run --gpus all ... nvidia-smi` failing with
   "could not select device driver \"\" with capabilities: [[gpu]]".
-- To fix: install `nvidia-container-toolkit` for the nested daemon, add `runtime: nvidia`
-  (or the `deploy.resources.reservations.devices` GPU block) to `docker-compose.yml`'s `dev`
-  service, and switch `requirements.txt`'s torch install off the `https://download.pytorch.org/whl/cpu`
-  index to a CUDA wheel matching the host driver's CUDA version.
-- Not done yet: explicitly deferred by the user mid-session rather than wired up immediately,
-  since plan.md locks CPU-only and a training run was already in flight.
+- **Attempted and blocked**: `nvidia-container-toolkit` has no Alpine/musl build — NVIDIA only
+  publishes deb/rpm packages, and its core component (`libnvidia-container`) is glibc-linked.
+  This agent container's OS is Alpine/musl (`cat /etc/os-release`), the same mismatch that
+  forced PyTorch itself into a separate glibc dev container (see Tech Stack above). `apk search
+  nvidia`/`container-toolkit` turns up nothing installable.
+- The only remaining path found: manually extract the glibc binaries out of the official
+  `nvidia-container-toolkit_*_deb_amd64.tar.gz` release asset (`ar x *.deb; tar xf data.tar.*`)
+  and run them under Alpine's `gcompat` glibc-compat shim, then register the runtime in the
+  nested dockerd's `daemon.json` and restart it (which kills the running `dev` container).
+  Unverified whether `libnvidia-container` actually works under `gcompat` — same risk class as
+  the earlier torch/musl dead end, not a standard supported path.
+- User explicitly declined this path (2026-10-19) given the fragility/unverified nature — chose
+  to stay CPU-only rather than attempt it. If revisited, consider instead running the whole dev
+  container stack on a **glibc-based** agent container/host (sidesteps the musl mismatch
+  entirely) rather than retrofitting GPU support onto this Alpine one.
 
 # Project
 
