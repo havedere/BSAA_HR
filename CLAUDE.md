@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+# Next session TODO
+
+Wire up GPU passthrough for training (currently CPU-only, per plan.md's locked decision):
+- Host has an NVIDIA GPU; its device nodes (`/dev/nvidia0`, etc.) already reach this agent
+  container, but the **nested** Docker daemon has no `nvidia-container-runtime` registered —
+  confirmed via `docker run --gpus all ... nvidia-smi` failing with
+  "could not select device driver \"\" with capabilities: [[gpu]]".
+- To fix: install `nvidia-container-toolkit` for the nested daemon, add `runtime: nvidia`
+  (or the `deploy.resources.reservations.devices` GPU block) to `docker-compose.yml`'s `dev`
+  service, and switch `requirements.txt`'s torch install off the `https://download.pytorch.org/whl/cpu`
+  index to a CUDA wheel matching the host driver's CUDA version.
+- Not done yet: explicitly deferred by the user mid-session rather than wired up immediately,
+  since plan.md locks CPU-only and a training run was already in flight.
+
 # Project
 
 CNN-BiLSTM model to estimate heart rate (BPM) from PPG (photoplethysmography) signals, trained against ECG-derived ground truth. Implementation follows `docs/agents/plan.md` and `docs/agents/pipeline-decisions.md`.
