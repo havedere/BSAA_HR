@@ -59,5 +59,4 @@ def build_subject_cache(subject_rows, seed=CAP_SEED):
         "windows": windows,
         "labels": labels,
         "dataset_source": dataset_source,
-        "subject_id": subject_rows[0]["global_subject_id"],
     }

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from bpm.data_loading import load_subject_npz, subjects_by_dataset_from_manifest
-from bpm.dataset import WindowDataset
+from bpm.dataset import zscore_window
 from bpm.model import CNNBiLSTM
 from bpm.split import subject_wise_split
 
@@ -25,13 +25,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def predict_subject(model, subject_data):
-    ds = WindowDataset(
-        subject_data["windows"], subject_data["labels"], augment=False
-    )
     with torch.no_grad():
-        windows = torch.from_numpy(ds.windows).float().to(DEVICE)
-        preds = model(windows).cpu().numpy()
-    return preds, subject_data["labels"]
+        windows = torch.from_numpy(zscore_window(subject_data["windows"])).float().to(DEVICE)
+        return model(windows).cpu().numpy()
 
 
 def bland_altman_plot(truth, pred, title, out_path):
@@ -68,7 +64,7 @@ def main():
         data = load_subject_npz(subject_id, CACHE_DIR)
         if data is None or len(data["labels"]) == 0:
             continue
-        pred, truth = predict_subject(model, data)
+        pred, truth = predict_subject(model, data), data["labels"]
         sub_dataset = str(data["dataset_source"][0])
 
         mae = float(np.abs(pred - truth).mean())

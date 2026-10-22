@@ -1,7 +1,6 @@
-numpy
-scipy
-scikit-learn
-matplotlib
-neurokit2
-torch
-pytest
+numpy==2.5.4
+scipy==1.18.1
+matplotlib==3.11.2
+neurokit2==0.2.13
+torch==2.14.1
+pytest==9.1.1

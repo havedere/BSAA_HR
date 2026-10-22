@@ -27,6 +27,8 @@ def main():
     for subject_id, subject_rows in sorted(by_subject.items()):
         result = build_subject_cache(subject_rows)
         if result is None:
+            # drop any earlier run's file so loaders don't pick up stale windows
+            (OUT_DIR / f"{subject_id}.npz").unlink(missing_ok=True)
             print(f"{subject_id}: no usable windows, skipped")
             continue
         np.savez(

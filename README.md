@@ -72,3 +72,25 @@ Why:
 - **It forced extra machinery on everything else.** Supporting its accelerometer channels meant zero-filled ACC channels plus a `has_motion` flag for the other two sub-datasets. With it gone, the model takes one PPG channel.
 
 Bringing it back would need a more robust ECG label pipeline first (one that does not throw away high-heart-rate stretches during motion), then the ACC input channels again.
+
+## Handoff: open investigation
+
+### Irregular multi-day multisite recordings
+
+Found 2026-10-22 during the audit; not investigated or fixed yet.
+
+- Multisite files are typically a few hours long (median 4.5 h), but 99 of the 519 are longer than 18 h and some run for days (durations from the EDF headers, as recorded in `cache/manifest.csv`):
+
+  | Files (all 4 sites each) | Declared duration |
+  |---|---|
+  | `P3_*_7.edf` | 966.9 h (40.3 days), 1.39 GB each |
+  | `P4_*_5.edf` | 222.7 h (9.3 days) |
+  | `P6_*_1.edf` | 121–143 h |
+  | `P2_*_32.edf` | about 113 h |
+  | `P2_*_31.edf`, `P14_*_7.edf`, `P15_*_3.edf` | 35–44 h |
+
+- `P3_earring_7.edf` yields only 681 usable windows (about 23 minutes), so most of that file is probably padding or flat signal, not real recording. The others have not been checked.
+- Subject P3 alone is 6.4 GB of the 14.2 GB multisite input, so these files dominate the `build_cache.py` run time.
+- Processing one `P3_*_7.edf` file peaks at about **22 GB RAM** (measured with `/usr/bin/time -v`). The cause is a float64 copy of the whole signal in `read_channels`, plus `ecg_to_hr_curve` and the window list in `make_windows`. On a 31 GB machine the cache build is close to running out of memory, and it can't be parallelised.
+
+To check next: what the bulk of these files contains (zeros, a constant value, or real signal); whether the headers are wrong or the data is genuinely that long; how the source dataset documents these trials. Then decide whether to trim them to the recorded part, skip them, or stream them in chunks. The "up to ~18hr" figure in this README and in `CLAUDE.md` is wrong; update it once this is resolved.

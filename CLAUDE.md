@@ -8,7 +8,7 @@ CNN-BiLSTM model to estimate heart rate (BPM) from PPG (photoplethysmography) si
 
 # Tech Stack
 
-Python 3.14, PyTorch (CUDA on the host RTX 3080, CPU fallback). `neurokit2` (R-peak detection), `scipy`/`numpy`/`scikit-learn`/`matplotlib`. EDF reading is a small numpy plain-EDF reader in `src/bpm/edf_io.py` (`pyedflib` has no 3.14 wheel and this Bazzite host has no Python headers to build it).
+Python 3.14, PyTorch (CUDA on the host RTX 3080, CPU fallback). `neurokit2` (R-peak detection), `scipy`/`numpy`/`matplotlib`. EDF reading is a small numpy plain-EDF reader in `src/bpm/edf_io.py` (`pyedflib` has no 3.14 wheel and this Bazzite host has no Python headers to build it).
 
 Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored) — no container. Default PyPI `torch` bundles CUDA, no extra index needed.
 
@@ -18,7 +18,7 @@ Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored) 
 - test: `.venv/bin/pytest`
 - lint: n/a — none configured
 - build manifest: `.venv/bin/python scripts/build_manifest.py` (writes `cache/manifest.csv`, paths relative to `harmonized_ecg_ppg_databases/`)
-- build window cache: `.venv/bin/python scripts/build_cache.py` (writes `cache/windows/<subject>.npz`; long-running — walks all 703 EDF files, R-peak detection on up to ~18hr multisite recordings)
+- build window cache: `.venv/bin/python scripts/build_cache.py` (writes `cache/windows/<subject>.npz`; long-running — walks all 684 EDF files, R-peak detection on up to ~18hr multisite recordings)
 - train: `.venv/bin/python scripts/train.py` (writes `cache/best.pt`)
 - evaluate: `.venv/bin/python scripts/evaluate.py` (prints per-sub-dataset MAE/RMSE, writes Bland-Altman plots to `cache/plots/`)
 
@@ -36,7 +36,7 @@ EDF header layout per the EDF spec: 256-byte main header + 256-byte-per-signal h
 
 Model input is the bandpass-filtered PPG channel only (`in_channels=1`). The earlier ACC zero-fill + `has_motion` flag scheme was removed together with the exercise sub-dataset.
 
-Planned split: subject-wise (no subject's windows cross train/val/test) across the combined pool from all three sub-datasets, roughly stratified by dataset-source/activity so the test set isn't dominated by one sub-dataset.
+Split: subject-wise (no subject's windows cross train/val/test), 70/15/15 within each of the two used sub-datasets (`src/bpm/split.py`, seed 42; val/test each get `max(1, round(0.15 * n))` subjects) so the test set isn't dominated by one sub-dataset.
 
 # Conventions
 

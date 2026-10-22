@@ -75,7 +75,7 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 
 ## Dependencies
 
-Packages (`requirements.txt`, host `.venv`, default PyPI torch with bundled CUDA): `neurokit2`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`, `torch`.
+Packages (`requirements.txt`, host `.venv`, default PyPI torch with bundled CUDA): `neurokit2`, `numpy`, `scipy`, `matplotlib`, `torch`.
 
 ## Decisions made so far
 
