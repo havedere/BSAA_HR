@@ -21,6 +21,7 @@ MANIFEST_PATH = ROOT / "cache" / "manifest.csv"
 CACHE_DIR = ROOT / "cache" / "windows"
 CHECKPOINT_PATH = ROOT / "cache" / "best.pt"
 PLOTS_DIR = ROOT / "cache" / "plots"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def predict_subject(model, subject_data):
@@ -28,8 +29,8 @@ def predict_subject(model, subject_data):
         subject_data["windows"], subject_data["labels"], subject_data["has_motion"], augment=False
     )
     with torch.no_grad():
-        windows = torch.stack([ds[i][0] for i in range(len(ds))])
-        preds = model(windows).numpy()
+        windows = torch.from_numpy(ds.windows).float().to(DEVICE)
+        preds = model(windows).cpu().numpy()
     return preds, subject_data["labels"]
 
 
@@ -54,8 +55,8 @@ def main():
     split = subject_wise_split(subjects_by_dataset, seed=42)
     test_subjects = sorted(split["test"])
 
-    model = CNNBiLSTM()
-    model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location="cpu"))
+    model = CNNBiLSTM().to(DEVICE)
+    model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=DEVICE))
     model.eval()
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)

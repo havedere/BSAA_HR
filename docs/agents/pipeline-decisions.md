@@ -16,7 +16,7 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 
 - Checked actual EDF headers (one file/sub-dataset): channel labels are clean exact strings (`ECG`, `PPG`, `ACC_X/Y/Z`), but physical units differ by sub-dataset — ECG `mV` (exercise) / `uV` (multisite) / unitless (wrist-finger); PPG `mV` (exercise) / unitless (other two).
 - No unit conversion: rely on the already-planned per-window z-score (`plan.md` §4) to wash out scale differences. Converting unitless channels to mV/µV would need fabricated calibration.
-- Read via `pyedflib` physical-value signals, channels matched by exact label string. Fail loudly (raise) if an expected channel is missing from a file — catches a malformed file immediately instead of producing a wrong-shaped window downstream.
+- Read physical-value signals via a small numpy plain-EDF reader in `edf_io.py` (replaced `pyedflib`: no Python 3.14 wheel, and the host can't build it; verified identical to `pyedflib` output to ~1e-12), channels matched by exact label string. Fail loudly (raise) if an expected channel is missing from a file — catches a malformed file immediately instead of producing a wrong-shaped window downstream.
 
 ## 2. Ground truth generation — CLOSED
 
@@ -51,8 +51,8 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 ## 7. Dataset/DataLoader — CLOSED
 
 - Total dataset size ~1.3GB (multisite capped ~800MB + wrist-finger ~430MB + exercise ~80MB, windows `(5,1000)` float32 ≈20KB each) — small enough to load fully.
-- Each split loads its per-subject `.npz` files fully into RAM at `Dataset.__init__` (concatenated arrays), not memory-mapped/lazy. CPU-only training gets no benefit from memory-mapping; avoids disk I/O bottleneck once z-score is the only per-batch work.
-- `DataLoader(num_workers=0)` — no worker processes. Data's already in RAM, per-sample work (z-score) is trivial, nothing to overlap.
+- Each split loads its per-subject `.npz` files fully into RAM at `Dataset.__init__` (concatenated arrays), not memory-mapped/lazy. Avoids a disk I/O bottleneck. Z-scoring is done once, vectorized, at `__init__`, so per-item work is just augmentation.
+- `DataLoader(num_workers=0)` — no worker processes. Data's already in RAM, per-sample work (augmentation only) is trivial, nothing to overlap.
 
 ## 8. Model architecture — CLOSED
 

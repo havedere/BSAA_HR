@@ -16,6 +16,9 @@ def build_manifest(root, header_reader):
     records += _scan_exercise(Path(root) / EXERCISE_DIR, header_reader)
     records += _scan_multisite(Path(root) / MULTISITE_DIR, header_reader)
     records += _scan_wristfinger(Path(root) / WRISTFINGER_DIR, header_reader)
+    # relative to `root` so the manifest survives moving the data folder
+    for r in records:
+        r["file_path"] = str(Path(r["file_path"]).relative_to(root))
     return records
 
 

@@ -30,3 +30,13 @@ def test_skips_zscore_for_zero_std_channel_avoiding_nan():
 
     assert not np.isnan(normed).any()
     np.testing.assert_array_equal(normed[1], window[1])
+
+
+def test_zscores_batch_same_as_each_window():
+    rng = np.random.default_rng(0)
+    batch = rng.normal(5.0, 3.0, size=(4, 3, 50))
+    batch[:, 2] = 1.0  # constant has_motion-style channel
+
+    np.testing.assert_allclose(
+        zscore_window(batch), np.stack([zscore_window(w) for w in batch])
+    )

@@ -11,12 +11,12 @@ _ACC_X, _ACC_Y, _ACC_Z = (CHANNEL_ORDER.index(c) for c in ("ACC_X", "ACC_Y", "AC
 
 
 def zscore_window(window):
-    mean = window.mean(axis=1, keepdims=True)
-    std = window.std(axis=1, keepdims=True)
-    normed = window.copy()
-    nonzero = std[:, 0] > 0
-    normed[nonzero] = (window[nonzero] - mean[nonzero]) / std[nonzero]
-    return normed
+    """Z-score each channel over time (last axis); works on one window or a batch."""
+    mean = window.mean(axis=-1, keepdims=True)
+    std = window.std(axis=-1, keepdims=True)
+    nonzero = std > 0
+    # zero-std channels (zero-filled ACC, has_motion flag) pass through unchanged
+    return np.where(nonzero, (window - mean) / np.where(nonzero, std, 1), window)
 
 
 def _augment(window, has_motion, rng):
@@ -33,7 +33,8 @@ def _augment(window, has_motion, rng):
 
 class WindowDataset(Dataset):
     def __init__(self, windows, labels, has_motion, augment=False, seed=42):
-        self.windows = windows
+        # z-score once up front: per-item z-scoring starves a GPU (DataLoader runs num_workers=0)
+        self.windows = zscore_window(windows)
         self.labels = labels
         self.has_motion = has_motion
         self.augment = augment
@@ -43,7 +44,7 @@ class WindowDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        window = zscore_window(self.windows[idx])
+        window = self.windows[idx]
         if self.augment:
             window = _augment(window, self.has_motion[idx], self._rng)
         return (

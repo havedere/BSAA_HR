@@ -38,8 +38,8 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 - Time-jitter considered and rejected: the 2s-stride/10s-window scheme (§2) already gives 80% overlap between adjacent cached windows, i.e. near-continuous time-shifted views of the same signal — explicit jitter would be redundant and would force reworking the windowing/cache (pad+crop) for little extra benefit.
 - Val/test: no augmentation.
 - No resampling needed — all three sub-datasets confirmed 100 Hz.
-- EDF signal reading via `pyedflib`.
-- Windows precomputed to disk, one `.npz` per subject (windows + labels + has_motion flag) — not windowed on-the-fly in the training `Dataset`, to avoid redoing R-peak detection/filtering every epoch on CPU-only training.
+- EDF signal reading via a small numpy plain-EDF reader (originally `pyedflib`, see pipeline-decisions.md §1).
+- Windows precomputed to disk, one `.npz` per subject (windows + labels + has_motion flag) — not windowed on-the-fly in the training `Dataset`, to avoid redoing R-peak detection/filtering every epoch.
 
 ## 5. Split
 
@@ -53,7 +53,7 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 - BiLSTM(hidden=64, 1 layer) on top of the CNN feature sequence → temporal context both directions. Output mean-pooled across all 125 timesteps (matches "mean HR over window" label semantics), not last-timestep-only.
 - Dense(32) → Dense(1) head, dropout 0.3 before the final dense. Single BPM regression output per window.
 - Loss: Huber (delta=5 BPM) — robust to ECG-QC noise/outliers, smoother gradient near zero than MAE.
-- Framework: PyTorch. Training: Adam lr=1e-3 + `ReduceLROnPlateau` (monitor val MAE, factor=0.5, patience=5, min_lr=1e-5), batch=64, up to 100 epochs, early stopping on val MAE (patience=10). CPU-only (no GPU in this environment).
+- Framework: PyTorch. Training: Adam lr=1e-3 + `ReduceLROnPlateau` (monitor val MAE, factor=0.5, patience=5, min_lr=1e-5), batch=64, up to 100 epochs, early stopping on val MAE (patience=10). Runs on CUDA when available (host RTX 3080), CPU fallback.
 - Checkpointing: save weights whenever val MAE improves (`best.pt`); final evaluation loads `best.pt`, not the loop's last epoch (early-stop patience runs 10 epochs past the best one).
 - Train batches drawn via `WeightedRandomSampler`, weighted so each sub-dataset contributes roughly equally per epoch regardless of total window count — otherwise the sub-dataset with the most windows (`multisite-ppg`, capped but still largest) would dominate training.
 
@@ -71,7 +71,7 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 
 ## Dependencies
 
-New packages to add (none currently installed; CPU-only environment, no GPU): `pyedflib`, `neurokit2`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`, `torch`.
+Packages (`requirements.txt`, host `.venv`, default PyPI torch with bundled CUDA): `neurokit2`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`, `torch`.
 
 ## Decisions made so far
 
@@ -79,5 +79,5 @@ New packages to add (none currently installed; CPU-only environment, no GPU): `p
 - Use ACC channels, with zero-fill + flag for datasets missing them.
 - Subject-wise split, not random-window split.
 - PyTorch over TensorFlow/Keras.
-- `pyedflib` for EDF reading, `neurokit2` (Pan-Tompkins) for R-peak detection.
+- numpy plain-EDF reader (replaced `pyedflib`) for EDF reading, `neurokit2` (Pan-Tompkins) for R-peak detection.
 - Precompute windows to disk rather than windowing on-the-fly.

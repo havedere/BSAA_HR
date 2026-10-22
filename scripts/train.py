@@ -21,6 +21,7 @@ BATCH_SIZE = 64
 MAX_EPOCHS = 100
 EARLY_STOP_PATIENCE = 10
 LR = 1e-3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def mae(pred, target):
@@ -31,6 +32,7 @@ def run_epoch(model, loader, optimizer, loss_fn, train):
     model.train(train)
     total_loss, total_mae, n = 0.0, 0.0, 0
     for windows, labels in loader:
+        windows, labels = windows.to(DEVICE), labels.to(DEVICE)
         if train:
             optimizer.zero_grad()
         with torch.set_grad_enabled(train):
@@ -63,7 +65,8 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, sampler=sampler, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
-    model = CNNBiLSTM()
+    print(f"training on {DEVICE}")
+    model = CNNBiLSTM().to(DEVICE)
     loss_fn = nn.HuberLoss(delta=5.0)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
