@@ -25,7 +25,7 @@ def make_windows(channels, hr_curve, fs, window_s=10, stride_s=2):
 
     if not kept_windows:
         return (
-            np.empty((0, len(channel_names), window_samples)),
-            np.empty((0,)),
+            np.empty((0, len(channel_names), window_samples), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
         )
-    return np.stack(kept_windows), np.array(kept_labels)
+    return np.stack(kept_windows).astype(np.float32), np.array(kept_labels, dtype=np.float32)
