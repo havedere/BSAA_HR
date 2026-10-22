@@ -55,10 +55,10 @@ def main():
     val_data = load_windows_for_subjects(sorted(split["val"]), CACHE_DIR)
 
     train_ds = WindowDataset(
-        train_data["windows"], train_data["labels"], train_data["has_motion"], augment=True
+        train_data["windows"], train_data["labels"], augment=True
     )
     val_ds = WindowDataset(
-        val_data["windows"], val_data["labels"], val_data["has_motion"], augment=False
+        val_data["windows"], val_data["labels"], augment=False
     )
 
     sampler = make_weighted_sampler(train_data["dataset_source"])

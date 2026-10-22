@@ -26,22 +26,22 @@ Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored) 
 
 # Data
 
-`harmonized_ecg_ppg_databases/` (extracted from `harmonized_ecg_ppg_databases.zip`) holds three EDF sub-datasets. All files are plain EDF (not EDF+), 100 Hz, no annotation channel, no CSV/ground-truth files anywhere — BPM labels must be derived at training time from ECG R-peaks.
+`harmonized_ecg_ppg_databases/` (extracted from `harmonized_ecg_ppg_databases.zip`) holds three EDF sub-datasets; only two are used (exercise is excluded, see `README.md`). All files are plain EDF (not EDF+), 100 Hz, no annotation channel, no CSV/ground-truth files anywhere — BPM labels must be derived at training time from ECG R-peaks.
 
-- **`wrist-ppg-during-exercise-1.0.0/`** — 19 files, 8 subjects (`s1`-`s6`, `s8`, `s9`; `s7` has no file). Channels: `ECG`, `PPG`, `ACC_X`, `ACC_Y`, `ACC_Z`. Activities: walk/run/bike (low/high resistance), ~5-10 min per file. Only sub-dataset with accelerometer data — needed for motion-artifact handling during exercise.
+- **`wrist-ppg-during-exercise-1.0.0/`** — **EXCLUDED** from the whole pipeline (not scanned by `build_manifest`; reasons in `README.md`). 19 files, 8 subjects (`s1`-`s6`, `s8`, `s9`; `s7` has no file). Channels: `ECG`, `PPG`, `ACC_X`, `ACC_Y`, `ACC_Z`. Activities: walk/run/bike (low/high resistance), ~5-10 min per file. Only sub-dataset with accelerometer data — needed for motion-artifact handling during exercise.
 - **`multisite-ppg/`** — 519 files, 20 subjects, 4 wearable sites (`earring`, `necklace`, `ring`, `watch`), 2 trials-ish per site per subject (filename pattern `P<id>_<site>_<trial>.edf`). Channels: `ECG`, `PPG` only (no ACC). Free-living recordings, duration highly variable per file (~2500s to ~66000s / up to 18hr) — window-count imbalance across files/subjects is a real risk if not capped.
 - **`wrist-finger-ppg/`** — 165 files, 27 subjects, 6 trials each (filename pattern `<subject>_<trial>.edf`). Channels: `ECG`, `PPG` only (no ACC). Short controlled clips, ~125-420s per file.
 
 EDF header layout per the EDF spec: 256-byte main header + 256-byte-per-signal header — see `src/bpm/edf_io.py`.
 
-Planned handling of the ACC mismatch: feed PPG + ACC_X/Y/Z as model input; for the two sub-datasets without ACC, zero-fill those channels and add a binary "has_motion" flag channel, rather than maintaining two separate model variants.
+Model input is the bandpass-filtered PPG channel only (`in_channels=1`). The earlier ACC zero-fill + `has_motion` flag scheme was removed together with the exercise sub-dataset.
 
 Planned split: subject-wise (no subject's windows cross train/val/test) across the combined pool from all three sub-datasets, roughly stratified by dataset-source/activity so the test set isn't dominated by one sub-dataset.
 
 # Conventions
 
-- `src/bpm/` — library code (manifest, EDF I/O, ground truth, windowing, channel assembly, preprocessing, dataset/model, split, caching). `scripts/` — thin CLI entry points over it.
-- TDD seams (see `tests/`): `manifest.build_manifest`, `ground_truth.ecg_to_hr_curve`, `windowing.make_windows`, `split.subject_wise_split`, `dataset.zscore_window`, `model.CNNBiLSTM.forward`, `edf_io.read_channels`. Other modules (`preprocessing`, `channels`, `cache`, `data_loading`) are thin glue, verified by smoke-running against real EDF files rather than unit tests.
+- `src/bpm/` — library code (manifest, EDF I/O, ground truth, windowing, preprocessing, dataset/model, split, caching). `scripts/` — thin CLI entry points over it.
+- TDD seams (see `tests/`): `manifest.build_manifest`, `ground_truth.ecg_to_hr_curve`, `windowing.make_windows`, `split.subject_wise_split`, `dataset.zscore_window`, `model.CNNBiLSTM.forward`, `edf_io.read_channels`. Other modules (`preprocessing`, `cache`, `data_loading`) are thin glue, verified by smoke-running against real EDF files rather than unit tests.
 
 ## Agent skills
 

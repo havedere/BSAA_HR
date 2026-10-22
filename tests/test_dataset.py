@@ -22,7 +22,7 @@ def test_skips_zscore_for_zero_std_channel_avoiding_nan():
     window = np.array(
         [
             [1.0, 2.0, 3.0, 4.0],
-            [0.0, 0.0, 0.0, 0.0],  # zero-filled ACC sentinel / has_motion flag
+            [0.0, 0.0, 0.0, 0.0],  # flat-lined channel
         ]
     )
 
@@ -35,7 +35,7 @@ def test_skips_zscore_for_zero_std_channel_avoiding_nan():
 def test_zscores_batch_same_as_each_window():
     rng = np.random.default_rng(0)
     batch = rng.normal(5.0, 3.0, size=(4, 3, 50))
-    batch[:, 2] = 1.0  # constant has_motion-style channel
+    batch[:, 2] = 1.0  # flat-lined channel
 
     np.testing.assert_allclose(
         zscore_window(batch), np.stack([zscore_window(w) for w in batch])

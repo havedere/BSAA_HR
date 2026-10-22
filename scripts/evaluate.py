@@ -26,7 +26,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def predict_subject(model, subject_data):
     ds = WindowDataset(
-        subject_data["windows"], subject_data["labels"], subject_data["has_motion"], augment=False
+        subject_data["windows"], subject_data["labels"], augment=False
     )
     with torch.no_grad():
         windows = torch.from_numpy(ds.windows).float().to(DEVICE)

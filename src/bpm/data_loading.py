@@ -4,10 +4,6 @@ from pathlib import Path
 
 import numpy as np
 
-from .channels import CHANNEL_ORDER
-
-HAS_MOTION_CHANNEL = CHANNEL_ORDER.index("has_motion")
-
 
 def subjects_by_dataset_from_manifest(manifest_path):
     with open(manifest_path) as f:
@@ -23,13 +19,10 @@ def load_subject_npz(subject_id, cache_dir):
     if not path.exists():
         return None
     data = np.load(path)
-    windows = data["windows"]
-    has_motion = windows[:, HAS_MOTION_CHANNEL, 0]
     return {
-        "windows": windows,
+        "windows": data["windows"],
         "labels": data["labels"],
         "dataset_source": data["dataset_source"],
-        "has_motion": has_motion,
     }
 
 
@@ -40,5 +33,5 @@ def load_windows_for_subjects(subject_ids, cache_dir):
         raise ValueError("no cached windows found for the given subjects")
     return {
         key: np.concatenate([p[key] for p in parts])
-        for key in ("windows", "labels", "dataset_source", "has_motion")
+        for key in ("windows", "labels", "dataset_source")
     }

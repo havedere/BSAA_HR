@@ -32,6 +32,8 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 
 ## 4. ACC channel assembly — CLOSED
 
+> **Superseded (2026-10-22):** the exercise sub-dataset is excluded from the project and the model input is PPG only — no ACC channels, no `has_motion` flag. See `README.md`. Text below kept as the original decision record.
+
 - Caught a bug risk: per-window z-score (`plan.md` §4) on a constant-0 channel (zero-filled ACC when absent) divides by `std=0` → NaN. Fix: skip z-score whenever a channel's window std is 0 (covers zero-filled ACC and the `has_motion` flag generally, no hardcoded channel list).
 - `has_motion` is a constant-value channel broadcast across the full window length (`1000` samples, all `1.0` or `0.0`), stacked as a 5th input channel — same tensor shape as the signal channels, no special-cased forward pass.
 - Model input = 5 channels: `PPG`, `ACC_X`, `ACC_Y`, `ACC_Z`, `has_motion`. `ECG` is ground-truth-only, never fed to the model (would make prediction trivial/circular).
@@ -73,6 +75,8 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 - `plan.md` §7 updated with both.
 
 ## 11. Augmentation (train split only) — CLOSED
+
+> **Superseded (2026-10-22):** PPG-only input now, so augmentation is Gaussian noise on PPG only; ACC noise/dropout removed with the exercise sub-dataset (see `README.md`).
 
 - Light set, applied after z-score, train split only: Gaussian noise (std=0.05, z-scored units) on `PPG` always and on `ACC_X/Y/Z` only when `has_motion=1`; ACC channel dropout (p=0.2 per channel, exercise-set only).
 - Never touches the zero-filled ACC sentinel channels or `has_motion` itself — those encode "no data here", and noising/dropping them would corrupt that meaning.

@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class CNNBiLSTM(nn.Module):
-    def __init__(self, in_channels=5, lstm_hidden=64, dropout=0.3):
+    def __init__(self, in_channels=1, lstm_hidden=64, dropout=0.3):
         super().__init__()
         self.cnn = nn.Sequential(
             nn.Conv1d(in_channels, 32, kernel_size=5, padding="same"),

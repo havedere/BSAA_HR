@@ -20,12 +20,16 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 
 ## 3. Input channels (ACC mismatch)
 
+> **Superseded (2026-10-22):** the exercise sub-dataset is excluded from the project and the model input is PPG only — no ACC channels, no `has_motion` flag. See `README.md`. Text below kept as the original decision record.
+
 - Only `wrist-ppg-during-exercise-1.0.0` has `ACC_X/Y/Z`; `multisite-ppg` and `wrist-finger-ppg` don't.
 - Decision: include ACC as model input (needed for exercise data — without it, motion artifact makes that sub-dataset near-unworkable).
 - Handling: feed PPG + ACC_X/Y/Z as input channels; for the two ACC-less sub-datasets, zero-fill the ACC channels and add a binary "has_motion" flag channel. One model, not two variants.
 - Gated/separate ACC-encoder branch considered and rejected for now (zero-fill is simpler, ships now); revisit only if exercise-set error is clearly ACC-starved.
 
 ## 4. Preprocessing
+
+> **Superseded (2026-10-22):** PPG-only input now; the ACC z-score/noise/dropout rules below no longer apply (exercise sub-dataset excluded, see `README.md`).
 
 - Bandpass filter PPG only (~0.5-8 Hz HR band), 4th-order Butterworth, zero-phase (`scipy` `sosfiltfilt`), applied once on the full continuous per-file signal before windowing. ECG is NOT filtered this way — it's ground-truth-only (never a model input, see §3), and `neurokit2`'s R-peak pipeline applies its own appropriate internal cleaning (~5-15 Hz, QRS-preserving); squashing ECG to the 0.5-8 Hz HR band first would attenuate the QRS complex and hurt R-peak accuracy.
 - Per-window z-score normalization (per-channel), skipped whenever a channel's window std is 0 (covers zero-filled ACC channels and the `has_motion` flag — avoids divide-by-zero NaN).
@@ -75,8 +79,8 @@ Packages (`requirements.txt`, host `.venv`, default PyPI torch with bundled CUDA
 
 ## Decisions made so far
 
-- Combine all three sub-datasets (not train on one alone).
-- Use ACC channels, with zero-fill + flag for datasets missing them.
+- Combine all three sub-datasets (not train on one alone). Later narrowed to two: exercise excluded (see `README.md`).
+- ~~Use ACC channels, with zero-fill + flag for datasets missing them.~~ Superseded: exercise sub-dataset excluded, PPG-only input (see `README.md`).
 - Subject-wise split, not random-window split.
 - PyTorch over TensorFlow/Keras.
 - numpy plain-EDF reader (replaced `pyedflib`) for EDF reading, `neurokit2` (Pan-Tompkins) for R-peak detection.
