@@ -33,9 +33,7 @@ def build_subject_cache(subject_rows, seed=CAP_SEED):
         windows, labels = process_file(row["file_path"])
         if not len(windows):
             continue
-        # cap per-file too: a single multisite file can run up to ~18hr and
-        # produce tens of thousands of windows, which would otherwise spike
-        # memory well past the eventual per-subject cap below.
+        # cap per file too, so one long multisite file can't blow up memory
         if sub_dataset == MULTISITE_DIR and len(windows) > MULTISITE_CAP_PER_SUBJECT:
             rng = np.random.default_rng(seed)
             keep = rng.choice(len(windows), size=MULTISITE_CAP_PER_SUBJECT, replace=False)

@@ -48,8 +48,8 @@ def run_epoch(model, loader, optimizer, loss_fn, train):
 
 
 def main():
-    torch.manual_seed(42)  # model init, dropout and WeightedRandomSampler all draw from torch's global RNG
-    torch.backends.cudnn.deterministic = True  # seed alone isn't enough on CUDA: cuDNN conv/LSTM kernels drift run to run
+    torch.manual_seed(42)
+    torch.backends.cudnn.deterministic = True  # cuDNN kernels vary between runs otherwise
     subjects_by_dataset = subjects_by_dataset_from_manifest(MANIFEST_PATH)
     split = subject_wise_split(subjects_by_dataset, seed=42)
 

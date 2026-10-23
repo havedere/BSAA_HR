@@ -20,8 +20,7 @@ def test_constant_rr_interpolates_flat_and_nans_before_first_anchor():
     curve = ecg_to_hr_curve(ecg, fs, r_peak_detector=_fake_detector(peak_times))
 
     assert len(curve) == 10
-    # t=0,1 have no computable instantaneous HR yet: the first peak (t=1) has
-    # no preceding RR interval, so the first usable anchor is at t=2.
+    # first peak (t=1) has no RR interval before it, so the curve starts at t=2
     assert math.isnan(curve[0])
     assert math.isnan(curve[1])
     for t in range(2, 10):

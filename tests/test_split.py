@@ -35,7 +35,5 @@ def test_unions_across_sub_datasets_and_is_deterministic():
 
     union = result1["train"] | result1["val"] | result1["test"]
     assert union == all_ids
-    # no subject crosses a dataset boundary into another dataset's split sizing:
-    # every exercise subject only shows up once across all splits (no leakage)
     assert result1["train"].isdisjoint(result1["val"])
     assert result1["train"].isdisjoint(result1["test"])

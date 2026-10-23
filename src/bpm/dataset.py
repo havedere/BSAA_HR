@@ -20,7 +20,7 @@ def _augment(window, rng):
 
 class WindowDataset(Dataset):
     def __init__(self, windows, labels, augment=False, seed=42):
-        # z-score once up front: per-item z-scoring starves a GPU (DataLoader runs num_workers=0)
+        # z-score once here; per-item z-scoring is too slow with num_workers=0
         self.windows = zscore_window(windows)
         self.labels = labels
         self.augment = augment
