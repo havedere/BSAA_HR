@@ -21,6 +21,7 @@ Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored),
 - build window cache: `.venv/bin/python scripts/build_cache.py` (writes `cache/windows/<subject>.npz`; long-running, walks all 684 EDF files, R-peak detection on up to ~18hr multisite recordings)
 - train: `.venv/bin/python scripts/train.py` (writes `cache/best.pt`)
 - evaluate: `.venv/bin/python scripts/evaluate.py` (prints per-sub-dataset MAE/RMSE, writes Bland-Altman plots to `cache/plots/`)
+- results notebook: `.venv/bin/jupyter lab notebooks/results.ipynb` (test-set plots: Bland-Altman, ROC/AUROC, scatter, error breakdowns; re-execute headless with `cd notebooks && ../.venv/bin/jupyter nbconvert --to notebook --execute --inplace results.ipynb`)
 
 `cache/` is gitignored, regenerated from the raw EDF data, never checked in.
 

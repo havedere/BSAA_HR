@@ -5,3 +5,6 @@ cache/
 .venv/
 harmonized_ecg_ppg_databases.zip
 harmonized_ecg_ppg_databases/
+.~lock.*#
+.obsidian/
+.ipynb_checkpoints/
