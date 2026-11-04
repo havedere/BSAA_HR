@@ -59,15 +59,15 @@ def bootstrap_letters(value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--loss", choices=["huber", "mae"], default="huber")
-    parser.add_argument("--delta", type=float, default=5.0, help="Huber delta (BPM)")
+    parser.add_argument("--loss", choices=["huber", "mae", "mse"], default="huber")
+    parser.add_argument("--delta", type=float, default=5.0, help="Huber delta (BPM), ignored for mae/mse")
     parser.add_argument(
         "--bootstrap", "-bootstrap", type=bootstrap_letters, default="",
         help="add time-warped train windows from cache/bootstrap/: H (high BPM), L (low BPM) or HL",
     )
     args = parser.parse_args()
     # default run keeps writing best.pt, others get a tagged checkpoint
-    tag = "mae" if args.loss == "mae" else f"huber{args.delta:g}"
+    tag = args.loss if args.loss in ("mae", "mse") else f"huber{args.delta:g}"
     if args.bootstrap:
         tag += f"_boot{args.bootstrap}"
     checkpoint_path = CHECKPOINT_PATH if tag == "huber5" else CHECKPOINT_PATH.with_name(f"best_{tag}.pt")
@@ -107,7 +107,7 @@ def main():
 
     print(f"training on {DEVICE}, loss={tag}, checkpoint={checkpoint_path.name}")
     model = CNNBiLSTM().to(DEVICE)
-    loss_fn = nn.L1Loss() if args.loss == "mae" else nn.HuberLoss(delta=args.delta)
+    loss_fn = {"mae": nn.L1Loss(), "mse": nn.MSELoss()}.get(args.loss) or nn.HuberLoss(delta=args.delta)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-5

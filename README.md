@@ -57,9 +57,9 @@ Trains the CNN-BiLSTM and keeps the best model.
 - Z-scores each window (mean 0, standard deviation 1) and adds small Gaussian noise to training windows.
 - Samples training batches so both sub-datasets contribute equally, whatever their window counts.
 - `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py`. Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix, so `best.pt` is not overwritten. Each epoch also prints the validation MAE on windows of 110 BPM and above.
-- `--loss huber` (default) or `--loss mae` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae`). Early stopping and the LR schedule stay on validation MAE either way, so runs compare fairly.
+- `--loss huber` (default), `--loss mae` or `--loss mse` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae` and `mse`). Early stopping and the LR schedule stay on validation MAE either way, so runs compare fairly.
 - Huber loss by default, Adam (learning rate 1e-3, halved when validation MAE stalls), batch size 64, up to 100 epochs.
-- Stops after 10 epochs without a better validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `mae` or `huber<delta>` plus `_boot<letters>` (e.g. `best_mae.pt`, `best_huber10.pt`, `best_huber5_bootHL.pt`).
+- Stops after 10 epochs without a better validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `mae`, `mse` or `huber<delta>` plus `_boot<letters>` (e.g. `best_mae.pt`, `best_mse.pt`, `best_huber10.pt`, `best_huber5_bootHL.pt`).
 
 Uses the GPU when CUDA is available. Prints the loss and MAE for every epoch.
 
