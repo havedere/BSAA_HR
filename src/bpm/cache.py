@@ -11,12 +11,22 @@ MULTISITE_CAP_PER_SUBJECT = 2000
 CAP_SEED = 42
 
 
-def process_file(file_path):
+def read_ppg_and_hr(file_path):
+    """Raw PPG, 1 Hz HR curve (NaN where unusable) and fs for one file."""
     signals, fs = read_channels(file_path, ["ECG", "PPG"])
 
     hr_curve = ecg_to_hr_curve(signals["ECG"], fs)
+    # constant raw PPG (sensor off / padding) is unusable even when ECG is live
+    sec = int(fs)
+    ppg_secs = signals["PPG"][: len(hr_curve) * sec].reshape(len(hr_curve), sec)
+    hr_curve[np.ptp(ppg_secs, axis=1) == 0] = np.nan
+    return signals["PPG"], hr_curve, fs
+
+
+def process_file(file_path):
+    ppg, hr_curve, fs = read_ppg_and_hr(file_path)
     windows, labels_arr = make_windows(
-        {"PPG": bandpass_filter(signals["PPG"], fs)},
+        {"PPG": bandpass_filter(ppg, fs)},
         hr_curve,
         fs,
         window_s=WINDOW_S,

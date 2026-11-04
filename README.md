@@ -32,7 +32,7 @@ Turns the recordings into training windows. Slow: it runs R-peak detection on ev
 1. Read the ECG and PPG channels.
 2. Find R-peaks in the ECG (`neurokit2`, Pan-Tompkins). Turn them into a heart-rate curve sampled once per second. Mark stretches as unusable when a beat implies a rate outside 30 to 220 BPM, or when two neighbouring beat intervals differ by more than 20%.
 3. Bandpass-filter the PPG to 0.5 to 8 Hz, the heart-rate band.
-4. Cut 10 s windows every 2 s. Drop any window that touches an unusable stretch. The label is the mean heart rate over the window.
+4. Cut 10 s windows every 2 s. Drop any window that touches an unusable stretch, or any second where the raw PPG is constant (sensor off or padding: most of the multi-day multisite files are flat PPG while the ECG is still live). The label is the mean heart rate over the window.
 
 Multisite subjects are capped at 2000 random windows (seed 42), so a few very long recordings don't dominate. Output: one `cache/windows/<subject>.npz` per subject, holding `windows` (N × 1 × 1000, float32), `labels` (BPM) and `dataset_source`. Subjects with no usable windows are skipped.
 

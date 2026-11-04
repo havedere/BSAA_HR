@@ -27,13 +27,18 @@ def ecg_to_hr_curve(ecg, fs, r_peak_detector=_neurokit2_r_peak_detector):
     in_domain = (t >= anchor_times[0]) & (t <= anchor_times[-1])
     curve[in_domain] = np.interp(t[in_domain], anchor_times, inst_hr)
 
-    for i in range(len(rr)):
-        bad = inst_hr[i] < _HR_MIN or inst_hr[i] > _HR_MAX
-        if i > 0:
-            ratio = rr[i] / rr[i - 1]
-            bad = bad or ratio > _RR_RATIO_LIMIT or ratio < 1 / _RR_RATIO_LIMIT
-        if bad:
-            span_start, span_end = peak_times[i], peak_times[i + 1]
-            curve[(t >= span_start) & (t <= span_end)] = np.nan
+    bad = (inst_hr < _HR_MIN) | (inst_hr > _HR_MAX)
+    ratio = rr[1:] / rr[:-1]
+    bad[1:] |= (ratio > _RR_RATIO_LIMIT) | (ratio < 1 / _RR_RATIO_LIMIT)
+
+    # NaN every integer second inside a bad span [peak_i, peak_i+1] (inclusive) via
+    # a diff array; one full-length mask per bad beat was O(beats x seconds)
+    lo = np.clip(np.ceil(peak_times[:-1][bad]).astype(int), 0, n_1hz)
+    hi = np.clip(np.floor(peak_times[1:][bad]).astype(int) + 1, 0, n_1hz)
+    keep = lo < hi
+    cover = np.zeros(n_1hz + 1, dtype=int)
+    np.add.at(cover, lo[keep], 1)
+    np.add.at(cover, hi[keep], -1)
+    curve[np.cumsum(cover[:-1]) > 0] = np.nan
 
     return curve
