@@ -39,8 +39,24 @@ class WindowDataset(Dataset):
         )
 
 
-def make_weighted_sampler(dataset_tags):
+def sampler_weights(dataset_tags, is_synthetic=None, max_synth_share=0.2):
+    """Each tag gets total weight 1. Synthetic windows get at most
+    max_synth_share of their tag's weight, real windows the rest."""
     tags = np.asarray(dataset_tags)
-    counts = {tag: (tags == tag).sum() for tag in np.unique(tags)}
-    weights = np.array([1.0 / counts[tag] for tag in tags])
-    return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+    synth = np.zeros(len(tags), bool) if is_synthetic is None else np.asarray(is_synthetic, bool)
+    weights = np.empty(len(tags))
+    for tag in np.unique(tags):
+        in_tag = tags == tag
+        n_synth, n_total = (in_tag & synth).sum(), in_tag.sum()
+        share = min(max_synth_share, n_synth / n_total)
+        weights[in_tag & ~synth] = (1 - share) / (n_total - n_synth)
+        if n_synth:
+            weights[in_tag & synth] = share / n_synth
+    return weights
+
+
+def make_weighted_sampler(dataset_tags, is_synthetic=None, max_synth_share=0.2):
+    weights = sampler_weights(dataset_tags, is_synthetic, max_synth_share)
+    # epoch length stays the real-window count, so bootstrap runs compare to best.pt
+    n_real = len(weights) if is_synthetic is None else int((~np.asarray(is_synthetic, bool)).sum())
+    return WeightedRandomSampler(weights, num_samples=n_real, replacement=True)

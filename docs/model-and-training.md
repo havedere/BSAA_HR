@@ -181,11 +181,11 @@ flowchart TB
 |---|---|---|
 | Batch size | 64 | |
 | Optimizer | Adam | lr = 1e-3, default betas, no weight decay |
-| Loss | Huber | δ = 5 BPM |
+| Loss | Huber | δ = 5 BPM; `--loss mae` or `--delta <BPM>` for experiments |
 | LR schedule | ReduceLROnPlateau | on validation MAE, factor 0.5, patience 5, min lr 1e-5 |
 | Max epochs | 100 | |
 | Early stopping | patience 10 | on validation MAE |
-| Model selection | best validation MAE | saved as `cache/best.pt` |
+| Model selection | best validation MAE | saved as `cache/best.pt` (non-default runs: `cache/best_<tag>.pt`) |
 | Seed | 42 | split, sampler, noise and weight init |
 | Hardware | RTX 3080 (CUDA) | CPU fallback |
 
@@ -324,7 +324,14 @@ $$
 > ```bash
 > .venv/bin/python scripts/train.py      # writes cache/best.pt
 > .venv/bin/python scripts/evaluate.py   # test-set MAE / RMSE + Bland-Altman plots
+>
+> # loss experiments: non-default runs get their own checkpoint and plot folder
+> .venv/bin/python scripts/train.py --delta 10                   # cache/best_huber10.pt
+> .venv/bin/python scripts/train.py --loss mae                   # cache/best_mae.pt
+> .venv/bin/python scripts/evaluate.py --ckpt cache/best_mae.pt  # plots in cache/plots/best_mae/
 > ```
+>
+> `--loss huber|mae` (default `huber`), `--delta <BPM>` (Huber δ, default 5, ignored for `mae`). Early stopping and the LR schedule stay on validation MAE for every loss. `--ckpt <path>` (default `cache/best.pt`) picks the checkpoint `evaluate.py` scores.
 
 ---
 
@@ -348,7 +355,7 @@ $$
 **How to test it**
 
 > [!todo] Experiments
-> - [ ] Retrain with **larger δ** (e.g. 10, 20 BPM) and with **MSE**, keeping everything else fixed (seed 42).
+> - [ ] Retrain with **larger δ** (e.g. 10, 20 BPM: `train.py --delta 10`) and with **MSE**, keeping everything else fixed (seed 42). `--loss` offers `huber` and `mae` only, so MSE needs a new choice in `train.py`.
 > - [ ] Compare on validation and test: **slope** of predicted vs ECG BPM, **error per HR bin** (> 90, > 100 BPM), and overall MAE.
 > - [x] Check how rare high-HR windows are in training: 7.2 % above 100 BPM, 21.4 % above 90 BPM.
 > - [ ] Plot the full **training label histogram** per sub-dataset next to the test distribution.

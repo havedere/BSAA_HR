@@ -1,3 +1,4 @@
+import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -47,15 +48,20 @@ def bland_altman_plot(truth, pred, title, out_path):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt", type=Path, default=CHECKPOINT_PATH)
+    args = parser.parse_args()
+    plots_dir = PLOTS_DIR if args.ckpt.resolve() == CHECKPOINT_PATH else PLOTS_DIR / args.ckpt.stem
+
     subjects_by_dataset = subjects_by_dataset_from_manifest(MANIFEST_PATH)
     split = subject_wise_split(subjects_by_dataset, seed=42)
     test_subjects = sorted(split["test"])
 
     model = CNNBiLSTM().to(DEVICE)
-    model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=DEVICE))
+    model.load_state_dict(torch.load(args.ckpt, map_location=DEVICE))
     model.eval()
 
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+    plots_dir.mkdir(parents=True, exist_ok=True)
     per_dataset_subject_mae = defaultdict(list)
     per_dataset_subject_rmse = defaultdict(list)
     per_dataset_truth_pred = defaultdict(lambda: ([], []))
@@ -87,14 +93,25 @@ def main():
             np.concatenate(truth_list),
             np.concatenate(pred_list),
             f"Bland-Altman ({sub_dataset})",
-            PLOTS_DIR / f"bland_altman_{sub_dataset}.png",
+            plots_dir / f"bland_altman_{sub_dataset}.png",
         )
 
     print(f"Combined (equal-weighted across sub-datasets): MAE={np.mean(combined_maes):.2f}")
 
+    print("MAE per 10-BPM truth bin (window-level, pooled per sub-dataset):")
+    for sub_dataset in sorted(per_dataset_truth_pred):
+        truth = np.concatenate(per_dataset_truth_pred[sub_dataset][0])
+        pred = np.concatenate(per_dataset_truth_pred[sub_dataset][1])
+        bins = (truth // 10 * 10).astype(int)
+        cells = [
+            f"{lo}:{np.abs(pred - truth)[bins == lo].mean():.1f}(n={(bins == lo).sum()})"
+            for lo in np.unique(bins)
+        ]
+        print(f"  {sub_dataset}: " + " ".join(cells))
+
     all_truth = np.concatenate([t for tl, _ in per_dataset_truth_pred.values() for t in tl])
     all_pred = np.concatenate([p for _, pl in per_dataset_truth_pred.values() for p in pl])
-    bland_altman_plot(all_truth, all_pred, "Bland-Altman (overall)", PLOTS_DIR / "bland_altman_overall.png")
+    bland_altman_plot(all_truth, all_pred, "Bland-Altman (overall)", plots_dir / "bland_altman_overall.png")
 
 
 if __name__ == "__main__":

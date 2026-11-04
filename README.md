@@ -11,7 +11,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest
 .venv/bin/python scripts/build_manifest.py   # cache/manifest.csv
 .venv/bin/python scripts/build_cache.py      # cache/windows/<subject>.npz (long-running)
-.venv/bin/python scripts/train.py            # cache/best.pt
+.venv/bin/python scripts/build_bootstrap.py  # optional: cache/bootstrap/{H,L}/<subject>.npz (long-running)
+.venv/bin/python scripts/train.py            # cache/best.pt (--bootstrap HL: cache/best_huber5_bootHL.pt)
 .venv/bin/python scripts/evaluate.py         # MAE/RMSE per sub-dataset, cache/plots/
 ```
 
@@ -36,6 +37,18 @@ Turns the recordings into training windows. Slow: it runs R-peak detection on ev
 
 Multisite subjects are capped at 2000 random windows (seed 42), so a few very long recordings don't dominate. Output: one `cache/windows/<subject>.npz` per subject, holding `windows` (N × 1 × 1000, float32), `labels` (BPM) and `dataset_source`. Subjects with no usable windows are skipped.
 
+### `scripts/build_bootstrap.py` (optional)
+
+Makes synthetic train windows for the BPM ranges the data barely covers, by time-warping real PPG. A factor f (0.7 to 1.6) squeezes or stretches a 10·f s stretch of signal into one 10 s window, so the label is f times the source heart rate.
+
+- Train subjects only, so nothing leaks into validation or test.
+- `L`: bins 40-60 BPM, both sub-datasets. `H`: bins 110-190 BPM, multisite only (wrist-finger test stays below 98 BPM and its signals top out at 113 BPM).
+- Each 10-BPM bin is topped up to 500 windows per sub-dataset, counting the real train windows. Each source position is used at most 5 times. Bins that run out of sources stay short and are flagged `SHORT` in the printed table, never padded with duplicates.
+- The warped window is bandpass-filtered again, because warping shifts the 0.5-8 Hz band and the leftover high-frequency energy would give synthetic windows away.
+- Slow: it runs R-peak detection on every train file. The HR curves are saved to `cache/hr_curves/` so reruns are fast. Delete that folder when the ground-truth code changes.
+
+Output: `cache/bootstrap/H/<subject>.npz` and `cache/bootstrap/L/<subject>.npz`, same keys as `cache/windows/`.
+
 ### `scripts/train.py`
 
 Trains the CNN-BiLSTM and keeps the best model.
@@ -43,8 +56,10 @@ Trains the CNN-BiLSTM and keeps the best model.
 - Splits subjects into train, validation and test (70/15/15 within each sub-dataset, seed 42). No subject appears in more than one split.
 - Z-scores each window (mean 0, standard deviation 1) and adds small Gaussian noise to training windows.
 - Samples training batches so both sub-datasets contribute equally, whatever their window counts.
-- Huber loss, Adam (learning rate 1e-3, halved when validation MAE stalls), batch size 64, up to 100 epochs.
-- Stops after 10 epochs without a better validation MAE. The best model is saved to `cache/best.pt`.
+- `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py`. Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix, so `best.pt` is not overwritten. Each epoch also prints the validation MAE on windows of 110 BPM and above.
+- `--loss huber` (default) or `--loss mae` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae`). Early stopping and the LR schedule stay on validation MAE either way, so runs compare fairly.
+- Huber loss by default, Adam (learning rate 1e-3, halved when validation MAE stalls), batch size 64, up to 100 epochs.
+- Stops after 10 epochs without a better validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `mae` or `huber<delta>` plus `_boot<letters>` (e.g. `best_mae.pt`, `best_huber10.pt`, `best_huber5_bootHL.pt`).
 
 Uses the GPU when CUDA is available. Prints the loss and MAE for every epoch.
 
@@ -54,6 +69,8 @@ Scores `cache/best.pt` on the test subjects. These are the same subjects as in t
 
 - Computes MAE and RMSE per subject, then averages over the subjects of each sub-dataset, so a subject with many windows doesn't outweigh the others.
 - Prints the score per sub-dataset, plus a combined MAE that weights each sub-dataset equally.
+- Prints the MAE per 10-BPM truth bin per sub-dataset, to show how the low and high tails do.
+- `--ckpt cache/best_huber5_bootHL.pt` scores another checkpoint (default `cache/best.pt`); its plots go to `cache/plots/<checkpoint name>/`, so the baseline plots are kept.
 - Saves Bland-Altman plots (prediction error against mean BPM) per sub-dataset and overall to `cache/plots/`.
 
 ## Data

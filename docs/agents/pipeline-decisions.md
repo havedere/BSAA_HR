@@ -2,7 +2,7 @@
 
 Companion to `plan.md`. `plan.md` holds the locked high-level plan; this file is the detailed, append-only decision log per pipeline stage, filled in as we walk through implementation. Each stage: decisions made + why, open items (none left pending once a stage is closed).
 
-Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) added afterward. No open items.
+Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) + stage 12 (time-warp bootstrap) added afterward. No open items.
 
 ---
 
@@ -64,6 +64,7 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 ## 9. Training loop — CLOSED
 
 - `ReduceLROnPlateau`: monitor val MAE, factor=0.5, patience=5, min_lr=1e-5. Patience is half early-stop's (10), so LR drops once before the run gives up.
+- Loss is switchable for experiments: `train.py --loss huber|mae --delta <BPM>` (default Huber, delta=5). Model selection stays on val MAE for every loss. Only the default run writes `best.pt`; others write `best_<tag>.pt` (tag `mae` / `huber<delta>`, plus `_boot<letters>`), and `evaluate.py --ckpt <path>` scores them into `cache/plots/<ckpt stem>/`, so the baseline is never overwritten.
 - Checkpointing: save `best.pt` whenever val MAE improves; final evaluation loads `best.pt`, not the loop's last epoch — early-stop patience=10 means training runs 10 epochs past the best one.
 - Caught a real imbalance risk: per-subject cap (stage 3) only bounds `multisite-ppg`'s extreme per-file blowup, not the overall sub-dataset window-count gap (exercise: ~thousands, wrist-finger: ~20k, multisite: up to ~40k capped). Fix: train batches drawn via `WeightedRandomSampler` so each sub-dataset contributes ~equally per epoch, not proportional to its raw window count — otherwise the largest sub-dataset would quietly dominate gradients, undermining the whole point of combining all three.
 - `plan.md` §6 updated with all of the above.
@@ -83,3 +84,15 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) ad
 - Time-jitter rejected: redundant given the existing 2s-stride/10s-window 80% overlap (already near-continuous time-shifted views in the cache); would also force reworking the windowing/cache (pad+crop) for little benefit.
 - Heavier augmentation (warping, cutout) deferred until baseline numbers exist to compare against.
 - `plan.md` §4 updated with a new "Augmentation" subsection.
+
+## 12. Time-warp bootstrap (train split only, opt-in) — CLOSED
+
+- Problem: train labels sit at 60-100 BPM. Multisite train has 161 windows below 50 BPM and only 254 windows at 130+ BPM, while multisite test reaches 191 BPM. Wrist-finger train covers 56-113 BPM only.
+- Fix: synthetic windows by time-warping real PPG. A factor f in [0.7, 1.6] maps a 10·f s source span onto one 10 s window; label = f × source HR, sampled once per output second (f=1 at an integer start equals the `make_windows` label exactly). Opt-in via `train.py --bootstrap H|L|HL`.
+- Ranges: `L` = bins 40-60, both sub-datasets. `H` = bins 110-190, multisite only (wrist-finger test stays below 98 BPM; its sources top out at 113, so its high bins would be near-duplicates).
+- Amount: each 10-BPM bin topped up to 500 windows per sub-dataset. Each source start is reused at most 5 times across all bins; short bins are reported, not padded.
+- Sampler: synthetic windows get at most 20% of their sub-dataset's weight, and the epoch length stays at the real-window count, so runs compare fairly with `best.pt`. Without the cap, top-up made wrist-finger about 50% synthetic.
+- Re-filter after warp (pad 3 s per side, bandpass, crop the centre): warping moves the 0.5-8 Hz band (to 0.8-12.8 Hz at f=1.6), and the model could spot synthetic high-BPM windows by out-of-band energy alone.
+- Built from raw EDF, not the window cache: f=1.6 needs 16 s of source plus padding, and capped multisite windows have no neighbours. HR curves are cached in `cache/hr_curves/`.
+- Train subjects only, so no val/test leakage. Early stopping stays on overall val MAE; val MAE at 110+ BPM is logged for information, and `evaluate.py` prints MAE per 10-BPM bin.
+- Caveat: a uniform warp also scales systole and pulse shape, while real high HR mostly shortens diastole. The synthetic tail is an approximation; judge it by per-bin test MAE against `best.pt`.

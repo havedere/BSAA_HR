@@ -19,8 +19,9 @@ Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored),
 - lint: none configured
 - build manifest: `.venv/bin/python scripts/build_manifest.py` (writes `cache/manifest.csv`, paths relative to `harmonized_ecg_ppg_databases/`)
 - build window cache: `.venv/bin/python scripts/build_cache.py` (writes `cache/windows/<subject>.npz`; long-running, walks all 684 EDF files, R-peak detection on up to ~18hr multisite recordings)
-- train: `.venv/bin/python scripts/train.py` (writes `cache/best.pt`)
-- evaluate: `.venv/bin/python scripts/evaluate.py` (prints per-sub-dataset MAE/RMSE, writes Bland-Altman plots to `cache/plots/`)
+- build bootstrap (optional): `.venv/bin/python scripts/build_bootstrap.py` (time-warped train windows for low/high BPM, writes `cache/bootstrap/{H,L}/<subject>.npz`; long-running, R-peak detection on train files, HR curves cached in `cache/hr_curves/`)
+- train: `.venv/bin/python scripts/train.py` (writes `cache/best.pt`); `--loss huber|mae` (default `huber`) and `--delta <BPM>` (Huber delta, default 5) pick the loss; `--bootstrap HL` (or `H`/`L`) adds the bootstrap windows. Non-default runs write `cache/best_<tag>.pt`, tag = `mae` or `huber<delta>` plus `_boot<letters>` (e.g. `best_huber10.pt`, `best_huber5_bootHL.pt`)
+- evaluate: `.venv/bin/python scripts/evaluate.py` (prints per-sub-dataset MAE/RMSE, writes Bland-Altman plots to `cache/plots/`); `--ckpt <path>` scores another checkpoint (default `cache/best.pt`), plots then go to `cache/plots/<ckpt stem>/`
 - results notebook: `.venv/bin/jupyter lab notebooks/results.ipynb` (test-set plots: Bland-Altman, ROC/AUROC, scatter, error breakdowns; re-execute headless with `cd notebooks && ../.venv/bin/jupyter nbconvert --to notebook --execute --inplace results.ipynb`)
 
 `cache/` is gitignored, regenerated from the raw EDF data, never checked in.
@@ -42,7 +43,7 @@ Split: subject-wise (no subject's windows cross train/val/test), 70/15/15 within
 # Conventions
 
 - `src/bpm/`: library code (manifest, EDF I/O, ground truth, windowing, preprocessing, dataset/model, split, caching). `scripts/`: thin CLI entry points over it.
-- TDD seams (see `tests/`): `manifest.build_manifest`, `ground_truth.ecg_to_hr_curve`, `windowing.make_windows`, `split.subject_wise_split`, `dataset.zscore_window`, `model.CNNBiLSTM.forward`, `edf_io.read_channels`. Other modules (`preprocessing`, `cache`, `data_loading`) are thin glue, verified by smoke-running against real EDF files rather than unit tests.
+- TDD seams (see `tests/`): `manifest.build_manifest`, `ground_truth.ecg_to_hr_curve`, `windowing.make_windows`, `split.subject_wise_split`, `dataset.zscore_window`, `model.CNNBiLSTM.forward`, `edf_io.read_channels`, `timewarp.warp_window`/`plan_bootstrap`, `dataset.sampler_weights`. Other modules (`preprocessing`, `cache`, `data_loading`) are thin glue, verified by smoke-running against real EDF files rather than unit tests.
 
 ## Agent skills
 
