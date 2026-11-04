@@ -52,7 +52,7 @@ def run_epoch(model, loader, optimizer, loss_fn, train):
 
 
 def bootstrap_letters(value):
-    if not value or set(value) - set("HL"):
+    if set(value) - set("HL"):  # empty = argparse applying type to the default
         raise argparse.ArgumentTypeError("use H, L or HL (H = high BPM, L = low BPM)")
     return "".join(sorted(set(value)))
 
