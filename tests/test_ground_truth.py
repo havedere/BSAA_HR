@@ -64,3 +64,32 @@ def test_adjacent_and_overlapping_bad_spans_nan_inclusive_bounds():
     assert curve[12] == 60.0
     assert curve[13] == 60.0
     assert curve[14] == 60.0
+
+
+def _sim_ecg(duration_s, bpm, fs=100):
+    import neurokit2 as nk
+
+    return nk.ecg_simulate(duration=duration_s, sampling_rate=fs, heart_rate=bpm, random_state=0)
+
+
+def test_quality_mask_keeps_clean_fast_ecg_either_polarity():
+    from bpm.ground_truth import ecg_quality_mask
+
+    ecg = _sim_ecg(60, 150)
+    for sign in (1, -1):
+        mask = ecg_quality_mask(sign * ecg, 100.0)
+        assert len(mask) == 60
+        assert mask[10:50].mean() == 0.0
+
+
+def test_quality_mask_flags_ramp_and_flatline_segments():
+    from bpm.ground_truth import ecg_quality_mask
+
+    ecg = _sim_ecg(90, 70)
+    ecg[3000:6000] = np.linspace(-1.0, 1.0, 3000)  # lead-off drift, s30-60
+    mask = ecg_quality_mask(ecg, 100.0)
+    assert mask[32:58].all()
+    assert not mask[5:25].any()
+    assert not mask[65:85].any()
+
+    assert ecg_quality_mask(np.zeros(3000), 100.0).all()

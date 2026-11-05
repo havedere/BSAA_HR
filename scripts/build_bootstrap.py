@@ -14,7 +14,7 @@ from bpm.edf_io import read_channels
 from bpm.manifest import MULTISITE_DIR, WRISTFINGER_DIR
 from bpm.preprocessing import bandpass_filter
 from bpm.split import subject_wise_split
-from bpm.timewarp import plan_bootstrap, warp_window
+from bpm.timewarp import plan_bootstrap, ppg_hr_agrees, warp_window
 
 DATA_ROOT = ROOT / "harmonized_ecg_ppg_databases"
 MANIFEST_PATH = ROOT / "cache" / "manifest.csv"
@@ -38,6 +38,11 @@ def hr_curve_for(row):
     _, curve, _ = read_ppg_and_hr(DATA_ROOT / row["file_path"])
     np.save(path, curve)
     return curve
+
+
+def ppg_ok_for(row, curve):
+    signals, fs = read_channels(DATA_ROOT / row["file_path"], ["PPG"])
+    return ppg_hr_agrees(bandpass_filter(signals["PPG"], fs), curve, fs)
 
 
 def main():
@@ -64,7 +69,17 @@ def main():
 
         print(f"{sub_dataset}: HR curves for {len(files)} train files")
         curves = [hr_curve_for(r) for r in files]
-        picks, stats = plan_bootstrap(curves, quotas, rng)
+        l_quotas = {b: q for b, q in quotas.items() if b[1] <= 100}
+        h_quotas = {b: q for b, q in quotas.items() if b[0] >= 100}
+        picks, stats = plan_bootstrap(curves, l_quotas, rng)
+        if h_quotas:
+            # H only warps sources whose PPG pulse matches the ECG label (L already agrees ~95%).
+            # shortcut: L and H track reuse separately, so a start in the 69-86 BPM overlap
+            # can be used up to 2x max_reuse; merge into one call if that matters.
+            source_ok = [ppg_ok_for(r, c) for r, c in zip(files, curves)]
+            h_picks, h_stats = plan_bootstrap(curves, h_quotas, rng, source_ok=source_ok)
+            picks += h_picks
+            stats.update(h_stats)
 
         by_file = defaultdict(list)
         for file_idx, start, factor, label in picks:

@@ -1,7 +1,7 @@
 import numpy as np
 
 from bpm.preprocessing import bandpass_filter
-from bpm.timewarp import plan_bootstrap, source_label, warp_window
+from bpm.timewarp import plan_bootstrap, ppg_hr_agrees, source_label, warp_window
 from bpm.windowing import make_windows
 
 FS = 100.0
@@ -79,3 +79,25 @@ def test_plan_respects_bins_and_reuse_cap():
     starts = [s for _, s, _, _ in picks]
     assert max(starts.count(s) for s in set(starts)) <= 5
     assert stats[(40, 50)][0] == 0
+
+
+def test_ppg_hr_agrees_per_start_second():
+    ppg = bandpass_filter(_sine_ppg(60, 1.0), FS)
+    hr = np.full(60, 60.0)
+    hr[40] = np.nan
+
+    ok = ppg_hr_agrees(ppg, hr, FS)
+
+    assert len(ok) == 51  # one per integer start with a full 10 s window
+    assert ok[:31].all()  # windows not touching the NaN second
+    assert not ok[31:41].any()
+    assert not ppg_hr_agrees(ppg, np.full(60, 120.0), FS).any()  # label 2x PPG rate
+
+
+def test_plan_skips_sources_masked_out():
+    hr_curves = [np.full(40, 80.0), np.full(40, 80.0)]
+    source_ok = [np.zeros(31, bool), np.ones(31, bool)]
+
+    picks, _ = plan_bootstrap(hr_curves, {(120, 130): 50}, np.random.default_rng(0), source_ok=source_ok)
+
+    assert picks and all(file_idx == 1 for file_idx, _, _, _ in picks)

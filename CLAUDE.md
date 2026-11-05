@@ -14,7 +14,7 @@ Runs directly on the host (Bazzite, immutable Fedora) in a `.venv` (gitignored),
 
 # Commands
 
-- build: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+- build: `/home/linuxbrew/.linuxbrew/bin/python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt` (Homebrew `python@3.14`: host `python3` is 3.15, which has no wheels for the pinned torch 2.14.1 / pandas 2.3.3, and neurokit2 0.2.13 needs pandas<3)
 - test: `.venv/bin/pytest`
 - lint: none configured
 - build manifest: `.venv/bin/python scripts/build_manifest.py` (writes `cache/manifest.csv`, paths relative to `harmonized_ecg_ppg_databases/`)

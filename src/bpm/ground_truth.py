@@ -3,11 +3,46 @@ import numpy as np
 
 _HR_MIN, _HR_MAX = 30.0, 220.0
 _RR_RATIO_LIMIT = 1.2
+# bSQI (Li/Clifford): fraction of beats two detectors agree on, per window
+_BSQI_WIN_S, _BSQI_TOL_S, _BSQI_MIN = 10, 0.15, 0.8
+_FLAT_FRAC = 0.1
 
 
 def _neurokit2_r_peak_detector(ecg, fs):
     _, info = nk.ecg_peaks(ecg, sampling_rate=fs, method="pantompkins1985")
     return np.asarray(info["ECG_R_Peaks"])
+
+
+def ecg_quality_mask(ecg, fs):
+    """True per 1 Hz second where the ECG can't serve as ground truth.
+
+    Pan-Tompkins fires a steady fake beat train on lead-off ramps/plateaus and
+    double-counts on noisy ECG; the RR checks in ecg_to_hr_curve pass both.
+    Flags 10 s windows where Pan-Tompkins and neurokit disagree (bSQI < 0.8)
+    and seconds whose cleaned ECG is near flat versus the recording median.
+    """
+    n = int(len(ecg) // fs)
+    sec = int(fs)
+    cleaned = nk.ecg_clean(ecg, sampling_rate=fs)
+
+    ptp = np.ptp(cleaned[: n * sec].reshape(n, sec), axis=1)
+    bad = ptp <= _FLAT_FRAC * np.median(ptp)
+
+    p1 = _neurokit2_r_peak_detector(ecg, fs) / fs
+    _, info = nk.ecg_peaks(cleaned, sampling_rate=fs, method="neurokit")
+    p2 = np.asarray(info["ECG_R_Peaks"]) / fs
+    for a in range(0, n, _BSQI_WIN_S):
+        b = a + _BSQI_WIN_S
+        x = p1[(p1 >= a) & (p1 < b)]
+        y = p2[(p2 >= a) & (p2 < b)]
+        if len(x) < 2 or len(y) < 2:
+            bad[a:b] = True
+            continue
+        j = np.clip(np.searchsorted(y, x), 1, len(y) - 1)
+        matched = np.sum(np.minimum(np.abs(y[j] - x), np.abs(y[j - 1] - x)) <= _BSQI_TOL_S)
+        if matched / (len(x) + len(y) - matched) < _BSQI_MIN:
+            bad[a:b] = True
+    return bad
 
 
 def ecg_to_hr_curve(ecg, fs, r_peak_detector=_neurokit2_r_peak_detector):

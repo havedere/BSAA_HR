@@ -1,7 +1,7 @@
 import numpy as np
 
 from .edf_io import read_channels
-from .ground_truth import ecg_to_hr_curve
+from .ground_truth import ecg_quality_mask, ecg_to_hr_curve
 from .manifest import MULTISITE_DIR
 from .preprocessing import bandpass_filter
 from .windowing import make_windows
@@ -16,6 +16,7 @@ def read_ppg_and_hr(file_path):
     signals, fs = read_channels(file_path, ["ECG", "PPG"])
 
     hr_curve = ecg_to_hr_curve(signals["ECG"], fs)
+    hr_curve[ecg_quality_mask(signals["ECG"], fs)] = np.nan
     # constant raw PPG (sensor off / padding) is unusable even when ECG is live
     sec = int(fs)
     ppg_secs = signals["PPG"][: len(hr_curve) * sec].reshape(len(hr_curve), sec)

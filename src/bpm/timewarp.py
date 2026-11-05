@@ -49,12 +49,44 @@ def warp_window(ppg, hr_curve, fs, start_s, factor, window_s=10, pad_s=PAD_S):
     return window[None].astype(np.float32), label
 
 
-def plan_bootstrap(hr_curves, quotas, rng, f_min=0.7, f_max=1.6, max_reuse=5, window_s=10):
+def ppg_hr_agrees(ppg, hr_curve, fs, window_s=10, tol=0.1, chunk=4096):
+    """Bool per integer start s: PPG spectral peak (0.6-3.5 Hz) of
+    ppg[s:s+window_s] within tol of mean(hr[s:s+window_s]). False where hr is NaN.
+
+    `ppg` is the bandpassed full-file signal. Multisite PPG is often motion-
+    corrupted under a correct ECG label; warping such a source makes a high-BPM
+    label on a window with no matching pulse.
+    """
+    n = max(0, len(hr_curve) - window_s + 1)
+    w, sec = int(window_s * fs), int(fs)
+    ok = np.zeros(n, dtype=bool)
+    n_ppg = min(n, max(0, (len(ppg) - w) // sec + 1))
+    if n_ppg == 0:
+        return ok
+    hr10 = sliding_window_view(hr_curve, window_s).mean(axis=1)[:n_ppg]
+    nfft = 4 * w
+    freqs = np.fft.rfftfreq(nfft, 1 / fs)
+    band = (freqs >= 0.6) & (freqs <= 3.5)
+    taper = np.hanning(w)
+    view = sliding_window_view(ppg, w)[::sec][:n_ppg]
+    rate = np.empty(n_ppg)
+    for a in range(0, n_ppg, chunk):
+        x = view[a : a + chunk]
+        x = (x - x.mean(axis=1, keepdims=True)) * taper
+        power = np.abs(np.fft.rfft(x, nfft, axis=1))[:, band]
+        rate[a : a + chunk] = 60 * freqs[band][power.argmax(axis=1)]
+    ok[:n_ppg] = np.abs(rate - hr10) <= tol * hr10
+    return ok
+
+
+def plan_bootstrap(hr_curves, quotas, rng, f_min=0.7, f_max=1.6, max_reuse=5, window_s=10, source_ok=None):
     """Pick (file_idx, start_s, factor, label) per bin from 1 Hz HR curves only.
 
     quotas: {(lo, hi): n}. Candidates are integer-second starts pooled over all
     curves; each start is used at most max_reuse times across all bins, and a
     bin that runs out of candidates stays short instead of being padded.
+    source_ok: optional per-curve bool array per start (see ppg_hr_agrees);
+    False starts are never used.
     Returns (picks, stats) with stats[(lo, hi)] = (generated, quota, unique_starts).
     """
     file_idx, starts, hr10 = [], [], []
@@ -62,7 +94,10 @@ def plan_bootstrap(hr_curves, quotas, rng, f_min=0.7, f_max=1.6, max_reuse=5, wi
         if len(hr) < window_s:
             continue
         m = sliding_window_view(hr, window_s).mean(axis=1)
-        s = np.flatnonzero(~np.isnan(m))
+        valid = ~np.isnan(m)
+        if source_ok is not None:
+            valid &= source_ok[i]
+        s = np.flatnonzero(valid)
         file_idx.append(np.full(len(s), i))
         starts.append(s)
         hr10.append(m[s])
