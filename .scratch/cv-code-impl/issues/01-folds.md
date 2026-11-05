@@ -1,6 +1,6 @@
 # 01 Stratified 5-fold subject groups + folds.json
 
-Status: ready-for-agent
+Status: done
 Spec: `.scratch/cv-code-impl/spec.md` Step 0A.1; method: `.scratch/model-run-plan/spec.md` Method 1.
 
 ## Scope

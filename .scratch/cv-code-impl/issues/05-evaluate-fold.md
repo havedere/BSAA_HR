@@ -1,6 +1,6 @@
 # 05 evaluate.py --fold, multi-ckpt ensemble, preds npz
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01, 03
 Spec: Step 0A.4.
 

@@ -1,6 +1,6 @@
 # 04 build_bootstrap.py --fold
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 Spec: Step 0A.3a.
 

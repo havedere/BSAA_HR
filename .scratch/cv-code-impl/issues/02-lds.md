@@ -1,6 +1,6 @@
 # 02 LDS loss weights
 
-Status: ready-for-agent
+Status: done
 Spec: Step 0A.2; method: model-run-plan Method 2.
 
 ## Scope

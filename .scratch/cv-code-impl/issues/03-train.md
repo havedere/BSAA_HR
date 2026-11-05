@@ -1,6 +1,6 @@
 # 03 train.py: --fold, --patience, --lds-power, balanced-val early stop, sidecar
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01, 02
 Spec: Step 0A.3.
 

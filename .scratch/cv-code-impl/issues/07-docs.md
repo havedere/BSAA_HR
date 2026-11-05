@@ -1,6 +1,6 @@
 # 07 Docs for Step 0A
 
-Status: ready-for-agent
+Status: done
 Blocked by: 01-06
 Spec: Step 0A.6.
 

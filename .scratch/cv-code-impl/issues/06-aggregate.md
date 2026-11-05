@@ -1,6 +1,6 @@
 # 06 aggregate_runs.py
 
-Status: ready-for-agent
+Status: done
 Blocked by: 03, 05
 Spec: Step 0A.5; method: model-run-plan "Metrics" + "Selection, statistics, reporting".
 
