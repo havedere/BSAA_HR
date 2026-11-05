@@ -2,7 +2,7 @@
 
 Companion to `plan.md`. `plan.md` holds the locked high-level plan; this file is the detailed, append-only decision log per pipeline stage, filled in as we walk through implementation. Each stage: decisions made + why, open items (none left pending once a stage is closed).
 
-Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) + stage 12 (time-warp bootstrap) added afterward. No open items.
+Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) + stage 12 (time-warp bootstrap) + stage 13 (5-fold CV, LDS) added afterward. No open items.
 
 ---
 
@@ -64,6 +64,8 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) + 
 
 ## 9. Training loop — CLOSED
 
+> **Superseded in part (2026-11-06):** early stopping and the LR scheduler now run on window-pooled balanced val MAE, and early-stop patience is 20 (scheduler patience stays 5). See stage 13.
+
 - `ReduceLROnPlateau`: monitor val MAE, factor=0.5, patience=5, min_lr=1e-5. Patience is half early-stop's (10), so LR drops once before the run gives up.
 - Loss is switchable for experiments: `train.py --loss huber|mae|mse --delta <BPM>` (default Huber, delta=5). Model selection stays on val MAE for every loss. Only the default run writes `best.pt`; others write `best_<tag>.pt` (tag `mae` / `mse` / `huber<delta>`, plus `_boot<letters>`), and `evaluate.py --ckpt <path>` scores them into `cache/plots/<ckpt stem>/`, so the baseline is never overwritten.
 - Checkpointing: save `best.pt` whenever val MAE improves; final evaluation loads `best.pt`, not the loop's last epoch — early-stop patience=10 means training runs 10 epochs past the best one.
@@ -98,3 +100,21 @@ Status: pipeline walkthrough complete (stages 0-10) + stage 11 (augmentation) + 
 - Train subjects only, so no val/test leakage. Early stopping stays on overall val MAE; val MAE at 110+ BPM is logged for information, and `evaluate.py` prints MAE per 10-BPM bin.
 - Caveat: a uniform warp also scales systole and pulse shape, while real high HR mostly shortens diastole. The synthetic tail is an approximation; judge it by per-bin test MAE against `best.pt`.
 - PPG source filter for `H` (2026-11-05): `H` only warps source starts where `timewarp.ppg_hr_agrees` holds (spectral PPG peak in 0.6-3.5 Hz within 10% of the 10 s ECG label). Multisite PPG is often motion-corrupted under a correct label, and warping such a source teaches high BPM on a window with no matching pulse. With the filter, `H` agreement within 10 BPM went from ~25% to 69-89% per bin. `L` is unfiltered (already ~95%). Real windows are not filtered: noisy PPG with a correct label stays as a realistic hard example.
+
+## 13. Subject-wise 5-fold CV + LDS (2026-11-06) — CLOSED
+
+Method definitions, selection rules and statistics: `.scratch/model-run-plan/spec.md` (Metrics, Method 1, Method 2, Selection).
+
+- Why CV: the fixed split holds only 3 multisite subjects each in val and test, val has no window >= 140 BPM while test has 88, and 6 MSE seeds spread wider (test MAE 6.08 ± 0.79) than the whole 20-config table. 5 folds put every subject in test once.
+- Folds: per sub-dataset, subjects sorted by (−score, subject_id), cut into strata of 5, shuffled within each stratum (`np.random.default_rng(42)`, one per sub-dataset), dealt to groups 0-4 (`split.assign_groups`). Score = share of the subject's windows >= 130 BPM (multisite) or >= 100 BPM (wrist-finger, which never reaches 130). Spreads the few high-BPM subjects across groups. Multisite 4 per group; wrist-finger 6/6/5/5/5.
+- Rotating val: fold k test = group k, val = group (k+1) mod 5, train = the other 3 (`split.fold_split`). Every subject is val once and test once.
+- Folds computed once by `scripts/make_folds.py` into `cache/folds.json` ({subject: {group, score}}), read by `train.py`, `build_bootstrap.py`, `evaluate.py` and `aggregate_runs.py`. Rebuilding `cache/windows/` does not reshuffle. `split.load_folds` returns `folds_hash` = sha256 of the file bytes; every run sidecar stores it, and `aggregate_runs.py` warns about runs with another hash.
+- The fixed split (`subject_wise_split`) stays the default without `--fold`.
+- Fitted quantities use the fold's train subjects only: bootstrap quotas and windows (`build_bootstrap.py --fold k` -> `cache/bootstrap/fold<k>/`), LDS density. Under `--fold`, wrist-finger also gets H bins [110,130): its labels reach 113 BPM, and the old exclusion came from the fixed test set.
+- Early stopping + LR scheduler: window-pooled balanced val MAE (mean of the two sub-datasets' window-pooled MAEs), for every run, fold or not. Pooled val MAE would let the sub-dataset with more val windows decide.
+- Patience 20 (was 10): with patience 10 vs scheduler patience 5 a run got only one LR halving, 2 runs collapsed (best epoch <= 1), and bootstrap runs often peaked late (epoch 30-32). Scheduler patience stays 5.
+- Seeds: `--seed` seeds init/shuffle/augment, not the split. CV runs use 3 seeds per config; the selection key takes the median over seeds, so one collapsed seed (best epoch <= 2) cannot move it.
+- Metrics: selection = subject-macro balanced MAE (mean over sub-datasets of the mean per-subject MAE). Tie-break only = bin-balanced MAE (window-pooled per bin, bins [40,60), [60,70), ..., [120,130), [130,∞), mean over bins with >= 20 windows). Window-pooled balanced MAE, RMSE, per-bin and per-dataset MAE are reported, not used to select.
+- Leave-test-group-out selection: the decision for test group k uses only val errors of folds j ≠ k-1 (fold j's val is group j+1), so group k never selects its own config. Global selection over all val is reported too, labelled optimistic. Tests vs baseline (Huber delta 5, no bootstrap, LDS off): Wilcoxon signed-rank on per-subject OOF test MAE per sub-dataset, Holm across configs. Logic in `src/bpm/aggregate.py`.
+- LDS (Yang et al., ICML 2021): `dataset.lds_weights`. Density = histogram of the fold's real train labels in 1-BPM bins over 30..220, each window counted with its sampler weight, smoothed with a Gaussian (σ = 2 BPM). Weight = density^-p, normalised to sampler-weighted mean 1, then clip at 20 and renormalise, repeated until max <= 20 (a single clip+renorm left max 25-27). Real windows only; synthetic bootstrap windows get weight 1. Loss = mean(w · per-window loss); val unweighted. `--lds-power p`, p ∈ {0 (off), 0.5, 1}.
+- Outputs: sidecar `cache/runs/<tag>.json` per run; `evaluate.py --fold k` writes per-window val+test predictions to `cache/preds/` (one ckpt or a mean-BPM seed ensemble, `scores` = std across models); `aggregate_runs.py` writes `cache/results/runs.csv` and `summary.csv`. No Bland-Altman plots under `--fold` (would be about 1,200 PNGs).

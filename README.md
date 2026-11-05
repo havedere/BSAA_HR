@@ -11,9 +11,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest
 .venv/bin/python scripts/build_manifest.py   # cache/manifest.csv
 .venv/bin/python scripts/build_cache.py      # cache/windows/<subject>.npz (long-running)
+.venv/bin/python scripts/make_folds.py       # cache/folds.json (5-fold CV subject groups)
 .venv/bin/python scripts/build_bootstrap.py  # optional: cache/bootstrap/{H,L}/<subject>.npz (long-running)
 .venv/bin/python scripts/train.py            # cache/best.pt (--bootstrap HL: cache/best_huber5_bootHL.pt)
 .venv/bin/python scripts/evaluate.py         # MAE/RMSE per sub-dataset, cache/plots/
+.venv/bin/python scripts/aggregate_runs.py   # CV runs: cache/results/{runs,summary}.csv
 ```
 
 Raw data goes in `harmonized_ecg_ppg_databases/` (extracted from `harmonized_ecg_ppg_databases.zip`). `cache/` is generated, never checked in.
@@ -37,6 +39,14 @@ Turns the recordings into training windows. Slow: it runs R-peak detection on ev
 
 Multisite subjects are capped at 2000 random windows (seed 42), so a few very long recordings don't dominate. Output: one `cache/windows/<subject>.npz` per subject, holding `windows` (N × 1 × 1000, float32), `labels` (BPM) and `dataset_source`. Subjects with no usable windows are skipped.
 
+### `scripts/make_folds.py`
+
+Splits the subjects into 5 groups for subject-wise cross-validation. Run once after `build_cache.py`; every `--fold` run reads the result, so rebuilding `cache/windows/` does not reshuffle the folds.
+
+- Stratified per sub-dataset: each subject gets a score, the share of its windows at 130 BPM and above (multisite) or 100 BPM and above (wrist-finger, which never reaches 130). Subjects are sorted by score, cut into strata of 5, shuffled within each stratum (seed 42) and dealt to groups 0-4. So the subjects with the most high-BPM windows end up in different groups.
+- Fold k: test = group k, validation = group (k+1) mod 5, train = the other 3 groups. Every subject is in test once and in validation once.
+- Output: `cache/folds.json`, `{subject: {group, score}}`. Its sha256 (`folds_hash`) goes into every run sidecar. Prints subjects per group, the multisite top 5 and windows of 140 BPM and above per group.
+
 ### `scripts/build_bootstrap.py` (optional)
 
 Makes synthetic train windows for the BPM ranges the data barely covers, by time-warping real PPG. A factor f (0.7 to 1.6) squeezes or stretches a 10·f s stretch of signal into one 10 s window, so the label is f times the source heart rate.
@@ -45,21 +55,26 @@ Makes synthetic train windows for the BPM ranges the data barely covers, by time
 - `L`: bins 40-60 BPM, both sub-datasets. `H`: bins 110-190 BPM, multisite only (wrist-finger test stays below 98 BPM and its signals top out at 113 BPM).
 - Each 10-BPM bin is topped up to 500 windows per sub-dataset, counting the real train windows. Each source position is used at most 5 times. Bins that run out of sources stay short and are flagged `SHORT` in the printed table, never padded with duplicates.
 - The warped window is bandpass-filtered again, because warping shifts the 0.5-8 Hz band and the leftover high-frequency energy would give synthetic windows away.
-- Slow: it runs R-peak detection on every train file. The HR curves are saved to `cache/hr_curves/` so reruns are fast. Delete that folder when the ground-truth code changes.
+- Slow: it runs R-peak detection on every train file. The HR curves are saved to `cache/hr_curves/` and the per-file PPG check to `cache/ppg_ok/`, so reruns are fast. Delete both folders when the ground-truth code changes.
+- `--fold k` takes the train subjects and bin quotas from fold k of `cache/folds.json`. Under `--fold`, wrist-finger also gets the H bins 110-130 BPM (its labels reach 113 BPM; the full exclusion came from the fixed test set).
 
-Output: `cache/bootstrap/H/<subject>.npz` and `cache/bootstrap/L/<subject>.npz`, same keys as `cache/windows/`.
+Output: `cache/bootstrap/H/<subject>.npz` and `cache/bootstrap/L/<subject>.npz` (with `--fold k`: `cache/bootstrap/fold<k>/{H,L}/`), same keys as `cache/windows/`.
 
 ### `scripts/train.py`
 
 Trains the CNN-BiLSTM and keeps the best model.
 
-- Splits subjects into train, validation and test (70/15/15 within each sub-dataset, seed 42). No subject appears in more than one split.
+- Splits subjects into train, validation and test (70/15/15 within each sub-dataset, seed 42). No subject appears in more than one split. `--fold k` uses fold k of `cache/folds.json` instead (see `make_folds.py`).
 - Z-scores each window (mean 0, standard deviation 1) and adds small Gaussian noise to training windows.
 - Samples training batches so both sub-datasets contribute equally, whatever their window counts.
-- `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py`. Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix, so `best.pt` is not overwritten. Each epoch also prints the validation MAE on windows of 110 BPM and above.
-- `--loss huber` (default), `--loss mae` or `--loss mse` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae` and `mse`). Early stopping and the LR schedule stay on validation MAE either way, so runs compare fairly.
+- `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py` (`cache/bootstrap/fold<k>/` under `--fold k`). Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix, so `best.pt` is not overwritten. Each epoch also prints the validation MAE on windows of 110 BPM and above.
+- `--loss huber` (default), `--loss mae` or `--loss mse` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae` and `mse`). Early stopping and the LR schedule stay on the balanced validation MAE either way, so runs compare fairly.
+- `--lds-power p` (default 0 = off) weights the loss per window by LDS (label-distribution smoothing): rare BPM values count more. Real train windows only; synthetic windows keep weight 1. Validation is unweighted.
+- `--seed s` (default 42) seeds init, shuffling and augmentation; the split stays at seed 42.
 - Huber loss by default, Adam (learning rate 1e-3, halved when validation MAE stalls), batch size 64, up to 100 epochs.
-- Stops after 10 epochs without a better validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `mae`, `mse` or `huber<delta>` plus `_boot<letters>` (e.g. `best_mae.pt`, `best_mse.pt`, `best_huber10.pt`, `best_huber5_bootHL.pt`).
+- Balanced validation MAE = mean of the two sub-datasets' window-pooled MAEs. Early stopping and the LR schedule use it.
+- Stops after 20 epochs (`--patience`, was 10) without a better balanced validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `<loss>[_boot<X>][_lds<p>][_fold<k>]_seed<s>` with loss `mae`, `mse` or `huber<delta>`. The seed is always in the tag under `--fold`, otherwise only when it is not 42 (e.g. `best_mse.pt`, `best_huber5_bootHL.pt`, `best_huber5_lds0.5_fold0_seed1.pt`).
+- Every run writes a sidecar `cache/runs/<tag>.json`: the arguments, best and stop epoch, best validation value, whether it hit the epoch limit or collapsed (best epoch 2 or earlier), git hash and `folds_hash`.
 
 Uses the GPU when CUDA is available. Prints the loss and MAE for every epoch.
 
@@ -72,6 +87,21 @@ Scores `cache/best.pt` on the test subjects. These are the same subjects as in t
 - Prints the MAE per 10-BPM truth bin per sub-dataset, to show how the low and high tails do.
 - `--ckpt cache/best_huber5_bootHL.pt` scores another checkpoint (default `cache/best.pt`); its plots go to `cache/plots/<checkpoint name>/`, so the baseline plots are kept.
 - Saves Bland-Altman plots (prediction error against mean BPM) per sub-dataset and overall to `cache/plots/`.
+- `--fold k --ckpt a.pt [b.pt ...]` predicts fold k's validation and test subjects and saves the per-window predictions (subject, dataset_source, split, truth, pred, scores), no plots. One checkpoint: `cache/preds/<tag>.npz`, `scores` is NaN. Several (seeds of one config): mean-BPM ensemble in `cache/preds/ens_<config id>_fold<k>.npz`, `scores` = std across models. Config id = tag without `_fold<k>_seed<s>`.
+
+### `scripts/aggregate_runs.py`
+
+Collects the CV runs: reads the sidecars in `cache/runs/` and the predictions in `cache/preds/`. The logic lives in `src/bpm/aggregate.py`.
+
+- Per run: subject-macro balanced MAE (mean per-subject MAE per sub-dataset, averaged over the two), window-pooled balanced MAE, bin-balanced MAE, per split.
+- Selection is leave-test-group-out: the decision for test group k only uses validation errors from folds whose validation group is not k. Ranking key = per-subject validation MAE, median over seeds, paired against the best config; ties within 1 SE (subject bootstrap) are broken by bin-balanced MAE. Also prints a global selection over all folds, labelled optimistic.
+- Out-of-fold test MAE against the baseline (Huber delta 5, no bootstrap, no LDS): Wilcoxon signed-rank per sub-dataset, Holm-corrected across configs.
+- Warns about runs trained on another `folds.json` and sidecars without predictions.
+- Output: `cache/results/runs.csv` (one row per run or ensemble) and `cache/results/summary.csv` (one row per config).
+
+### Archived fixed-split results
+
+The results from before the CV switch (fixed 70/15/15 split, patience 10, early stopping on plain validation MAE) are moved to `cache/archive_fixedsplit/` in Step 1 of the run plan (not done yet): `cache/best_*.pt` (e.g. `best_mae.pt`, `best_huber10.pt`), `cache/logs/` and `cache/plots/` (e.g. `cache/plots/best_mae/`). After the move, those paths live under `cache/archive_fixedsplit/` (e.g. `cache/archive_fixedsplit/best_mae.pt`, `cache/archive_fixedsplit/plots/best_mae/`). `cache/best.pt` stays in place, because the notebook and the default `evaluate.py` load it.
 
 ## Data
 
