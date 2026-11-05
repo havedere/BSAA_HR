@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from scipy.ndimage import gaussian_filter1d
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 _NOISE_STD = 0.05
@@ -19,10 +20,11 @@ def _augment(window, rng):
 
 
 class WindowDataset(Dataset):
-    def __init__(self, windows, labels, augment=False, seed=42):
+    def __init__(self, windows, labels, augment=False, seed=42, weights=None):
         # z-score once here; per-item z-scoring is too slow with num_workers=0
         self.windows = zscore_window(windows)
         self.labels = labels
+        self.weights = weights
         self.augment = augment
         self._rng = np.random.default_rng(seed)
 
@@ -33,10 +35,29 @@ class WindowDataset(Dataset):
         window = self.windows[idx]
         if self.augment:
             window = _augment(window, self._rng)
-        return (
+        item = (
             torch.from_numpy(window).float(),
             torch.tensor(self.labels[idx], dtype=torch.float32),
         )
+        if self.weights is None:
+            return item
+        return item + (torch.tensor(self.weights[idx], dtype=torch.float32),)
+
+
+def lds_weights(labels, power, sample_weights, sigma=2.0, clip=20.0):
+    """LDS loss weights (Yang et al. 2021): inverse Gaussian-smoothed label density
+    to the power p, sample-weighted mean 1, clipped at `clip`."""
+    s = np.asarray(sample_weights, float)
+    # 1-BPM bins 30..220; labels outside fall in the edge bins
+    bins = np.clip(np.rint(np.asarray(labels, float)).astype(int), 30, 220) - 30
+    density = gaussian_filter1d(np.bincount(bins, weights=s, minlength=191), sigma, mode="nearest")
+    w = density[bins] ** -power
+    w /= np.sum(w * s) / np.sum(s)
+    # one clip+renorm can push the max back over clip, so repeat until it holds
+    while w.max() > clip * (1 + 1e-12):
+        w = np.minimum(w, clip)
+        w /= np.sum(w * s) / np.sum(s)
+    return w
 
 
 def sampler_weights(dataset_tags, is_synthetic=None, max_synth_share=0.2):
