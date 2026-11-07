@@ -116,7 +116,8 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=42, help="init/shuffle/augment seed; the split stays at seed 42")
     parser.add_argument("--patience", type=int, default=20, help="early-stopping patience (epochs)")
-    parser.add_argument("--fold", type=int, choices=range(5), help="CV fold from cache/folds.json; default = fixed split")
+    parser.add_argument("--fold", type=int, choices=range(5),
+                        help="CV fold from cache/folds.json; default = fixed split")
     parser.add_argument("--lds-power", type=float, default=0.0, help="LDS loss-weight power p (0 = off)")
     args = parser.parse_args()
     tag = run_tag(args.loss, args.delta, args.bootstrap, args.lds_power, args.fold, args.seed, args.head)

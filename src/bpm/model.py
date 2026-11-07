@@ -33,6 +33,7 @@ def decode_bpm(logits, window=10, log_prior=None, tau=0):
 
 
 def dist_std(logits):
+    """Std of the softmax curve over the bin centres (dist uncertainty score)."""
     p = torch.softmax(logits, dim=1)
     c = _centres(p)[None, :]
     mean = (p * c).sum(1, keepdim=True)

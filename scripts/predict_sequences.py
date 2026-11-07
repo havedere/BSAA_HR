@@ -1,6 +1,7 @@
-"""Per-recording window sequences for smoothing: every 2 s-stride window of the fold's val+test recordings
-within +-5 min of a labelled window, ensemble-predicted -> cache/sequences/<config id>_fold<k>_seed<s>/ (one ckpt) or ens_<config id>_fold<k>/ (several),
-<file stem>.npz per recording; same naming as cache/preds/."""
+"""Per-recording window sequences for smoothing: every 2 s-stride window of the fold's val+test
+recordings within +-5 min of a labelled window, ensemble-predicted.
+Writes cache/sequences/<config id>_fold<k>_seed<s>/ (one ckpt) or ens_<config id>_fold<k>/ (several),
+one <file stem>.npz per recording; same naming as cache/preds/."""
 import argparse
 import csv
 import sys

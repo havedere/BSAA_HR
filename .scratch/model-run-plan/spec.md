@@ -162,7 +162,7 @@ Uni project: one red thread through the training, each stage answers one questio
 ## Step 2: Stage A — basic losses (45 runs, ~2 h)
 3 configs (Huber δ10, MAE, MSE; basic) × 5 folds × 3 seeds, LDS off, head reg.
 Measured basis: ~2.5 s/epoch + ~25 s overhead; patience 20 -> ~35-65 epochs -> 2-3 min per run incl. evaluate.
-Runner: throwaway bash in scratchpad; train then evaluate `--fold`; continue past failures; one status line per
+Runner: `.scratch/model-run-plan/run_stage_a.sh` (`--dry-run` lists the 45 runs; resumable); train then evaluate `--fold`; continue past failures; one status line per
 run. Order: seed-major, then fold, then config.
 
 ## Step 3: report Stage A -> L*; the problem (per-bin bias, pred-vs-truth slope, error in the 120s bin).

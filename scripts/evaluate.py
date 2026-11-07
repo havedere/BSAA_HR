@@ -28,9 +28,7 @@ FOLDS_PATH = ROOT / "cache" / "folds.json"
 PREDS_DIR = ROOT / "cache" / "preds"
 HR_CURVE_DIR = ROOT / "cache" / "hr_curves"  # written by build_bootstrap.py
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-HEAD_BY_OUT = {1: "reg", N_BINS: "dist", 2: "gauss"}
+HEAD_BY_OUT = {1: "reg", N_BINS: "dist", 2: "gauss"}  # last-layer width -> head
 
 
 def to_bpm(head, out, log_prior=None, tau=0):
@@ -51,10 +49,10 @@ def log_prior_from(subject_ids):
 def predict(models, subject_data, log_prior=None, tau=0, mc=0, with_logp=False):
     """Ensemble prediction for one subject (all models share one head) -> dict of numpy (n,) arrays:
     pred, scores (primary: reg spread, dist curve std, gauss sigma), score_spread, score_std, score_mc
-    (NaN where not applicable). dist: per-model logit adjustment -> softmax -> mean probs -> decode;
-    gauss: mixture mean / variance; mc > 0: std of BPM over mc dropout passes pooled across all models (BatchNorm eval;
-    includes between-model spread for ensembles).
-    with_logp (dist only): also "logp" (n, N_BINS) = log of the ensemble-mean probs."""
+    (NaN where not applicable).
+    dist: per-model logit adjustment -> softmax -> mean probs -> decode. gauss: mixture mean / variance.
+    mc > 0: std of BPM over mc dropout passes pooled across all models (BatchNorm eval; includes the
+    between-model spread for ensembles). with_logp (dist only): also "logp" (n, N_BINS), log of the mean probs."""
     head = models[0].head_type
     assert all(m.head_type == head for m in models), "ensemble mixes heads"
     x = torch.from_numpy(zscore_window(subject_data["windows"])).float().to(DEVICE)
@@ -170,7 +168,7 @@ def evaluate_fold(fold, ckpts, tau=0, mc=0):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt", type=Path, nargs="+", required=True,
-                        help="one or more checkpoints; several (needs --fold) = mean-BPM ensemble")
+                        help="one or more checkpoints; several (needs --fold) = seed ensemble")
     parser.add_argument("--fold", type=int, choices=range(5), help="CV fold from cache/folds.json; writes cache/preds/")
     parser.add_argument("--tau", type=int, choices=[0, 1], default=0,
                         help="dist only: subtract tau * log train-label prior before decoding")

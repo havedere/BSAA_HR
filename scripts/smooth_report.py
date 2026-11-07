@@ -2,7 +2,7 @@
 Pipeline: ensemble (in the sequences) -> input gate (limit fitted on the capped val preds) -> smoother
 (gated windows: R = inf / flat emission / left out of the median) -> output gate on the posterior std
 (limit refitted on val sequence windows). Smoother parameters tuned on val, scored on test.
-Writes cache/results/smooth.csv."""
+Writes cache/results/smooth_<seq dir>.csv (one file per config and fold)."""
 import argparse
 import csv
 import re
@@ -25,7 +25,7 @@ from bpm.split import fold_split, load_folds
 from bpm.windowing import STRIDE_S, WINDOW_S
 from evaluate import FOLDS_PATH, HR_CURVE_DIR, MANIFEST_PATH
 
-OUT_PATH = ROOT / "cache" / "results" / "smooth.csv"
+RESULTS_DIR = ROOT / "cache" / "results"
 GRID = {"median": {"k": [3, 5, 9, 15]},
         "kalman": {"m": [1, 2, 4], "c": [0.5, 1, 2, 4]},
         "kalman_const": {"m": [1, 2, 4], "c": [2, 4, 8, 16]},  # no model score: R = c^2
@@ -129,7 +129,8 @@ def metrics(r, passed):
     e, s, d, truth = r["err"], r["subject"], r["dataset"], r["truth"]
     m = {"coverage": passed.mean()}
     m["mae_macro"], m["subjects_out"] = balanced_mae(e, s, d, passed)
-    m["mae_window"] = float(np.mean([e[passed & (d == x)].mean() for x in np.unique(d) if (passed & (d == x)).any()]))
+    m["mae_window"] = float(np.mean([e[passed & (d == x)].mean() for x in np.unique(d)
+                                     if (passed & (d == x)).any()]))
     for lo, hi in zip(BIN_EDGES[:-1], BIN_EDGES[1:]):
         rows = passed & (truth >= lo) & (truth < hi)
         m[f"mae_{lo}"] = e[rows].mean() if rows.any() else np.nan
@@ -138,7 +139,8 @@ def metrics(r, passed):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seq", type=Path, required=True, help="cache/sequences/<config id>_fold<k>_seed<s>/ or ens_<config id>_fold<k>/")
+    parser.add_argument("--seq", type=Path, required=True,
+                        help="cache/sequences/<config id>_fold<k>_seed<s>/ or ens_<config id>_fold<k>/")
     parser.add_argument("--preds", type=Path, help="capped preds npz of the same ensemble (input gate limit)")
     parser.add_argument("--max-gated-s", type=float, default=30, help="longest gated run the smoother may bridge")
     args = parser.parse_args()
@@ -148,8 +150,9 @@ def main():
     for p in sorted(args.seq.glob("*.npz")):
         z = np.load(p)
         seqs.append({k: (z[k].item() if z[k].ndim == 0 else z[k]) for k in z.files})
-    if not seqs:
-        sys.exit(f"no sequences in {args.seq}")
+    missing = {"val", "test"} - {s["split"] for s in seqs}
+    if missing:
+        sys.exit(f"no {'/'.join(sorted(missing))} sequences in {args.seq} (tuning needs val, scoring needs test)")
     is_dist = "logits" in seqs[0]
     has_score = np.isfinite(np.concatenate([s["score"] for s in seqs]).astype(float)).all()
 
@@ -195,12 +198,13 @@ def main():
                              **metrics(test, passed),
                              "lag_mae": lag_error(seqs, res, "test", out_limit)})
     df = pd.DataFrame(rows)
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUT_PATH, index=False)
+    out_path = RESULTS_DIR / f"smooth_{args.seq.name}.csv"
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_path, index=False)
     show = ["smoother", "params", "in_gate", "out_gate", "val_mae_macro", "mae_macro", "mae_window",
             "coverage", "subjects_out", "lag_mae"]
     print(df[show].to_string(index=False, float_format=lambda v: f"{v:.3f}"))
-    print(f"wrote {OUT_PATH} ({len(df)} rows)")
+    print(f"wrote {out_path} ({len(df)} rows)")
 
 
 if __name__ == "__main__":
