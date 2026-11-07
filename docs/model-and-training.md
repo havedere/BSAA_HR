@@ -169,10 +169,10 @@ flowchart TB
     end
     V --> SCH["LR scheduler:<br/>× 0.5 after 5 stalled epochs"]
     SCH --> Q{Val MAE<br/>improved?}
-    Q -- yes --> CK["Save cache/best.pt"] --> E
+    Q -- yes --> CK["Save cache/best_tag.pt"] --> E
     Q -- no --> ES{10 epochs<br/>without improvement<br/>or epoch 100?}
     ES -- no --> E
-    ES -- yes --> X([Stop: best.pt is the final model])
+    ES -- yes --> X([Stop: best_tag.pt is the final model])
 ```
 
 ### 3.1 Hyperparameters
@@ -185,7 +185,7 @@ flowchart TB
 | LR schedule | ReduceLROnPlateau | on validation MAE, factor 0.5, patience 5, min lr 1e-5 |
 | Max epochs | 100 | |
 | Early stopping | patience 10 | on validation MAE |
-| Model selection | best validation MAE | saved as `cache/best.pt` (non-default runs: `cache/best_<tag>.pt`) |
+| Model selection | best validation MAE | saved as `cache/best_<tag>.pt` (default run: `best_huber5.pt`) |
 | Seed | 42 | split, sampler, noise and weight init |
 | Hardware | RTX 3080 (CUDA) | CPU fallback |
 
@@ -301,7 +301,7 @@ $$
 
 > [!example] End of epoch
 > 1. **Scheduler:** if val MAE has not improved for 5 epochs, the learning rate halves (never below 1e-5).
-> 2. **Checkpoint:** if val MAE is the best so far, the weights are saved to `cache/best.pt`.
+> 2. **Checkpoint:** if val MAE is the best so far, the weights are saved to `cache/best_<tag>.pt`.
 > 3. **Early stopping:** after 10 epochs without improvement, training stops.
 > 4. A log line is printed: `epoch N: train_loss=… train_mae=… val_mae=…`.
 
@@ -322,7 +322,7 @@ $$
 
 > [!quote] Commands
 > ```bash
-> .venv/bin/python scripts/train.py      # writes cache/best.pt
+> .venv/bin/python scripts/train.py      # writes cache/best_huber5.pt
 > .venv/bin/python scripts/evaluate.py   # test-set MAE / RMSE + Bland-Altman plots
 >
 > # loss experiments: non-default runs get their own checkpoint and plot folder
@@ -332,7 +332,7 @@ $$
 > .venv/bin/python scripts/evaluate.py --ckpt cache/best_mae.pt  # plots in cache/plots/best_mae/
 > ```
 >
-> `--loss huber|mae|mse` (default `huber`), `--delta <BPM>` (Huber δ, default 5, ignored for `mae` and `mse`). With `mse` the printed train loss is in BPM². Early stopping and the LR schedule stay on validation MAE for every loss. `--ckpt <path>` (default `cache/best.pt`) picks the checkpoint `evaluate.py` scores.
+> `--loss huber|mae|mse` (default `huber`), `--delta <BPM>` (Huber δ, default 5, ignored for `mae` and `mse`). With `mse` the printed train loss is in BPM². Early stopping and the LR schedule stay on validation MAE for every loss. `--ckpt <path>` (required) picks the checkpoint `evaluate.py` scores.
 
 ---
 

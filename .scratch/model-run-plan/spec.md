@@ -132,7 +132,7 @@ no pulse no model can recover HR.
 
 ## Step 1: archive old results, build per-fold bootstrap
 - Done 2026-11-07: old results first archived, then deleted on user request (with the fold-0 smoke artefacts and the fixed-split bootstrap). Original step: move `cache/best_*.pt`, `cache/logs/`, `cache/plots/` to `cache/archive_fixedsplit/` (~15 MB, source of the
-  Context numbers). `cache/best.pt` stays in place (notebook and default `evaluate.py` still load it).
+  Context numbers). `cache/best.pt` dropped 2026-11-07: every run writes `best_<tag>.pt`, `evaluate.py --ckpt` is required; only the notebooks still refer to it (fixed later).
 - `build_bootstrap.py --fold k` for k = 0..4: computes the 251 missing HR curves (5,259 h incl. P3; ~10 min at
   the measured rate) as their subjects enter train, plus the per-file PPG check (~15 min total, cached).
   HR curves are complete only after all 5 folds. Budget 30-45 min.

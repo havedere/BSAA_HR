@@ -21,7 +21,7 @@ from bpm.split import fold_split, load_folds, subject_wise_split
 MANIFEST_PATH = ROOT / "cache" / "manifest.csv"
 CACHE_DIR = ROOT / "cache" / "windows"
 BOOTSTRAP_DIR = ROOT / "cache" / "bootstrap"
-CHECKPOINT_PATH = ROOT / "cache" / "best.pt"
+CKPT_DIR = ROOT / "cache"
 FOLDS_PATH = ROOT / "cache" / "folds.json"
 RUNS_DIR = ROOT / "cache" / "runs"
 
@@ -119,9 +119,8 @@ def main():
     parser.add_argument("--fold", type=int, choices=range(5), help="CV fold from cache/folds.json; default = fixed split")
     parser.add_argument("--lds-power", type=float, default=0.0, help="LDS loss-weight power p (0 = off)")
     args = parser.parse_args()
-    # default run keeps writing best.pt, others get a tagged checkpoint
     tag = run_tag(args.loss, args.delta, args.bootstrap, args.lds_power, args.fold, args.seed, args.head)
-    checkpoint_path = CHECKPOINT_PATH if tag == "huber5" else CHECKPOINT_PATH.with_name(f"best_{tag}.pt")
+    checkpoint_path = CKPT_DIR / f"best_{tag}.pt"
 
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True  # cuDNN kernels vary between runs otherwise

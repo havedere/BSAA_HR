@@ -67,26 +67,25 @@ Trains the CNN-BiLSTM and keeps the best model.
 - Splits subjects into train, validation and test (70/15/15 within each sub-dataset, seed 42). No subject appears in more than one split. `--fold k` uses fold k of `cache/folds.json` instead (see `make_folds.py`).
 - Z-scores each window (mean 0, standard deviation 1) and adds small Gaussian noise to training windows.
 - Samples training batches so both sub-datasets contribute equally, whatever their window counts.
-- `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py` (`cache/bootstrap/fold<k>/` under `--fold k`). Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix, so `best.pt` is not overwritten. Each epoch also prints the validation MAE on windows of 110 BPM and above.
+- `--bootstrap H`, `L` or `HL` (`-bootstrap HL` also works) adds the windows from `build_bootstrap.py` (`cache/bootstrap/fold<k>/` under `--fold k`). Synthetic windows get at most 20% of each sub-dataset's sampling weight, and an epoch stays as long as the real-window count. The checkpoint gets a `_boot<letters>` suffix. Each epoch also prints the validation MAE on windows of 110 BPM and above.
 - `--loss huber` (default), `--loss mae` or `--loss mse` picks the training loss; `--delta 10` sets the Huber delta in BPM (default 5, ignored for `mae` and `mse`). Early stopping and the LR schedule stay on the balanced validation MAE either way, so runs compare fairly.
 - `--lds-power p` (default 0 = off) weights the loss per window by LDS (label-distribution smoothing): rare BPM values count more. Real train windows only; synthetic windows keep weight 1. Validation is unweighted.
 - `--seed s` (default 42) seeds init, shuffling and augmentation; the split stays at seed 42.
 - Huber loss by default, Adam (learning rate 1e-3, halved when validation MAE stalls), batch size 64, up to 100 epochs.
 - Balanced validation MAE = mean of the two sub-datasets' window-pooled MAEs. Early stopping and the LR schedule use it.
-- Stops after 20 epochs (`--patience`, was 10) without a better balanced validation MAE. The best model is saved to `cache/best.pt` for the default run (Huber, delta 5, no bootstrap). Other runs save to `cache/best_<tag>.pt`, tag = `<loss>[_boot<X>][_lds<p>][_fold<k>]_seed<s>` with loss `mae`, `mse` or `huber<delta>`. The seed is always in the tag under `--fold`, otherwise only when it is not 42 (e.g. `best_mse.pt`, `best_huber5_bootHL.pt`, `best_huber5_lds0.5_fold0_seed1.pt`).
+- Stops after 20 epochs (`--patience`, was 10) without a better balanced validation MAE. The best model is saved to `cache/best_<tag>.pt` (default run: `best_huber5.pt`), tag = `<loss>[_boot<X>][_lds<p>][_fold<k>]_seed<s>` with loss `mae`, `mse` or `huber<delta>`. The seed is always in the tag under `--fold`, otherwise only when it is not 42 (e.g. `best_mse.pt`, `best_huber5_bootHL.pt`, `best_huber5_lds0.5_fold0_seed1.pt`).
 - Every run writes a sidecar `cache/runs/<tag>.json`: the arguments, best and stop epoch, best validation value, whether it hit the epoch limit or collapsed (best epoch 2 or earlier), git hash and `folds_hash`.
 
 Uses the GPU when CUDA is available. Prints the loss and MAE for every epoch.
 
 ### `scripts/evaluate.py`
 
-Scores `cache/best.pt` on the test subjects. These are the same subjects as in training, because the split is rebuilt from the manifest with the same seed.
+Scores the checkpoint given with `--ckpt` (required) on the test subjects. These are the same subjects as in training, because the split is rebuilt from the manifest with the same seed.
 
 - Computes MAE and RMSE per subject, then averages over the subjects of each sub-dataset, so a subject with many windows doesn't outweigh the others.
 - Prints the score per sub-dataset, plus a combined MAE that weights each sub-dataset equally.
 - Prints the MAE per 10-BPM truth bin per sub-dataset, to show how the low and high tails do.
-- `--ckpt cache/best_huber5_bootHL.pt` scores another checkpoint (default `cache/best.pt`); its plots go to `cache/plots/<checkpoint name>/`, so the baseline plots are kept.
-- Saves Bland-Altman plots (prediction error against mean BPM) per sub-dataset and overall to `cache/plots/`.
+- Saves Bland-Altman plots (prediction error against mean BPM) per sub-dataset and overall to `cache/plots/<checkpoint name>/`, e.g. `--ckpt cache/best_huber5_bootHL.pt` -> `cache/plots/best_huber5_bootHL/`.
 - `--fold k --ckpt a.pt [b.pt ...]` predicts fold k's validation and test subjects and saves the per-window predictions (subject, dataset_source, split, truth, pred, scores), no plots. One checkpoint: `cache/preds/<tag>.npz`, `scores` is NaN. Several (seeds of one config): mean-BPM ensemble in `cache/preds/ens_<config id>_fold<k>.npz`, `scores` = std across models. Config id = tag without `_fold<k>_seed<s>`.
 
 ### `scripts/aggregate_runs.py`
@@ -101,7 +100,7 @@ Collects the CV runs: reads the sidecars in `cache/runs/` and the predictions in
 
 ### Archived fixed-split results
 
-The results from before the CV switch (fixed 70/15/15 split, patience 10, early stopping on plain validation MAE: `cache/best_*.pt`, `cache/logs/`, `cache/plots/`, the fixed-split bootstrap `cache/bootstrap/{H,L}/`) and the fold-0 smoke artefacts of the CV code were deleted on 2026-11-07; only the numbers quoted in the run plan Context remain. `cache/best.pt` is missing too and has to be regenerated with `train.py --patience 10` (the notebook and the default `evaluate.py` load it).
+The results from before the CV switch (fixed 70/15/15 split, patience 10, early stopping on plain validation MAE: `cache/best_*.pt`, `cache/logs/`, `cache/plots/`, the fixed-split bootstrap `cache/bootstrap/{H,L}/`) and the fold-0 smoke artefacts of the CV code were deleted on 2026-11-07; only the numbers quoted in the run plan Context remain. `cache/best.pt` (the old fixed-split baseline) is gone too; nothing but the notebooks still refers to it (fixed later).
 
 ## Data
 

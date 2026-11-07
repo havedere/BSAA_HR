@@ -78,6 +78,6 @@ def sampler_weights(dataset_tags, is_synthetic=None, max_synth_share=0.2):
 
 def make_weighted_sampler(dataset_tags, is_synthetic=None, max_synth_share=0.2):
     weights = sampler_weights(dataset_tags, is_synthetic, max_synth_share)
-    # epoch length stays the real-window count, so bootstrap runs compare to best.pt
+    # epoch length stays the real-window count, so bootstrap runs compare to runs without bootstrap
     n_real = len(weights) if is_synthetic is None else int((~np.asarray(is_synthetic, bool)).sum())
     return WeightedRandomSampler(weights, num_samples=n_real, replacement=True)

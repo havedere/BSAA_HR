@@ -23,7 +23,6 @@ from bpm.split import fold_split, load_folds, subject_wise_split
 
 MANIFEST_PATH = ROOT / "cache" / "manifest.csv"
 CACHE_DIR = ROOT / "cache" / "windows"
-CHECKPOINT_PATH = ROOT / "cache" / "best.pt"
 PLOTS_DIR = ROOT / "cache" / "plots"
 FOLDS_PATH = ROOT / "cache" / "folds.json"
 PREDS_DIR = ROOT / "cache" / "preds"
@@ -170,7 +169,7 @@ def evaluate_fold(fold, ckpts, tau=0, mc=0):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, nargs="+", default=[CHECKPOINT_PATH],
+    parser.add_argument("--ckpt", type=Path, nargs="+", required=True,
                         help="one or more checkpoints; several (needs --fold) = mean-BPM ensemble")
     parser.add_argument("--fold", type=int, choices=range(5), help="CV fold from cache/folds.json; writes cache/preds/")
     parser.add_argument("--tau", type=int, choices=[0, 1], default=0,
@@ -185,7 +184,7 @@ def main():
     if args.mc:
         parser.error("--mc needs --fold")
     args.ckpt = args.ckpt[0]
-    plots_dir = PLOTS_DIR if args.ckpt.resolve() == CHECKPOINT_PATH else PLOTS_DIR / args.ckpt.stem
+    plots_dir = PLOTS_DIR / args.ckpt.stem
 
     subjects_by_dataset = subjects_by_dataset_from_manifest(MANIFEST_PATH)
     split = subject_wise_split(subjects_by_dataset, seed=42)

@@ -58,7 +58,7 @@ Estimate heart rate (BPM) from PPG using a CNN-BiLSTM, trained against ECG-deriv
 - Dense(32) → Dense(1) head, dropout 0.3 before the final dense. Single BPM regression output per window.
 - Loss: Huber (delta=5 BPM) — robust to ECG-QC noise/outliers, smoother gradient near zero than MAE.
 - Framework: PyTorch. Training: Adam lr=1e-3 + `ReduceLROnPlateau` (monitor val MAE, factor=0.5, patience=5, min_lr=1e-5), batch=64, up to 100 epochs, early stopping on val MAE (patience=10). Runs on CUDA when available (host RTX 3080), CPU fallback.
-- Checkpointing: save weights whenever val MAE improves (`best.pt`); final evaluation loads `best.pt`, not the loop's last epoch (early-stop patience runs 10 epochs past the best one).
+- Checkpointing: save weights whenever val MAE improves (`best_<tag>.pt`); final evaluation loads that checkpoint, not the loop's last epoch (early-stop patience runs 10 epochs past the best one).
 - Train batches drawn via `WeightedRandomSampler`, weighted so each sub-dataset contributes roughly equally per epoch regardless of total window count — otherwise the sub-dataset with the most windows (`multisite-ppg`, capped but still largest) would dominate training.
 
 ## 7. Evaluation
