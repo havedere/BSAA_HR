@@ -101,7 +101,7 @@ Collects the CV runs: reads the sidecars in `cache/runs/` and the predictions in
 
 ### Archived fixed-split results
 
-The results from before the CV switch (fixed 70/15/15 split, patience 10, early stopping on plain validation MAE) were moved to `cache/archive_fixedsplit/` in Step 1 of the run plan (2026-11-07): `cache/best_*.pt` (e.g. `best_mae.pt`, `best_huber10.pt`), `cache/logs/` and `cache/plots/` (e.g. `cache/plots/best_mae/`). After the move, those paths live under `cache/archive_fixedsplit/` (e.g. `cache/archive_fixedsplit/best_mae.pt`, `cache/archive_fixedsplit/plots/best_mae/`). `cache/best.pt` stays in place, because the notebook and the default `evaluate.py` load it. (It is currently missing and has to be regenerated with `train.py --patience 10`.) Smoke-test artefacts of the CV code (fold-0 checkpoints, sidecars, preds, sequences, results) are in `cache/archive_smoke/`.
+The results from before the CV switch (fixed 70/15/15 split, patience 10, early stopping on plain validation MAE: `cache/best_*.pt`, `cache/logs/`, `cache/plots/`, the fixed-split bootstrap `cache/bootstrap/{H,L}/`) and the fold-0 smoke artefacts of the CV code were deleted on 2026-11-07; only the numbers quoted in the run plan Context remain. `cache/best.pt` is missing too and has to be regenerated with `train.py --patience 10` (the notebook and the default `evaluate.py` load it).
 
 ## Data
 
