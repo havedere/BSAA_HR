@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from bpm.data_loading import load_windows_for_subjects, subjects_by_dataset_from_manifest
 from bpm.dataset import WindowDataset, lds_weights, make_weighted_sampler, sampler_weights
-from bpm.model import CNNBiLSTM
+from bpm.model import CNNBiLSTM, decode_bpm, gaussian_targets
 from bpm.split import fold_split, load_folds, subject_wise_split
 
 MANIFEST_PATH = ROOT / "cache" / "manifest.csv"
@@ -35,8 +35,25 @@ def mae(pred, target):
     return (pred - target).abs().mean().item()
 
 
+def make_loss(head, loss, delta):
+    """-> fn(model output, labels) = (per-window loss, BPM prediction)."""
+    if head == "dist":
+        ce = nn.CrossEntropyLoss(reduction="none")
+        return lambda out, y: (ce(out, gaussian_targets(y)), decode_bpm(out, tau=0))
+    if head == "gauss":
+        nll = nn.GaussianNLLLoss(reduction="none")
+
+        def beta_nll(out, y):  # beta-NLL, beta=0.5; logvar clamped to [-10, 10] against exp overflow
+            var = out[:, 1].clamp(-10, 10).exp()
+            return nll(out[:, 0], y, var) * var.detach() ** 0.5, out[:, 0]
+        return beta_nll
+    base = (nn.HuberLoss(reduction="none", delta=delta) if loss == "huber"
+            else {"mae": nn.L1Loss, "mse": nn.MSELoss}[loss](reduction="none"))
+    return lambda out, y: (base(out, y), out)
+
+
 def run_epoch(model, loader, optimizer, loss_fn, train):
-    """loss_fn has reduction="none"; batches with a weight column use mean(w * loss).
+    """loss_fn(out, labels) -> (per-window loss, BPM); batches with a weight column use mean(w * loss).
     Returns (loss, mae, per-window preds in loader order)."""
     model.train(train)
     total_loss, total_mae, n = 0.0, 0.0, 0
@@ -46,8 +63,7 @@ def run_epoch(model, loader, optimizer, loss_fn, train):
         if train:
             optimizer.zero_grad()
         with torch.set_grad_enabled(train):
-            preds = model(windows)
-            per_window = loss_fn(preds, labels)
+            per_window, preds = loss_fn(model(windows), labels)
             loss = (per_window * batch[2].to(DEVICE)).mean() if len(batch) == 3 else per_window.mean()
         if train:
             loss.backward()
@@ -65,8 +81,8 @@ def balanced_mae(preds, labels, dataset_source):
     return float(np.mean([errors[dataset_source == d].mean() for d in np.unique(dataset_source)]))
 
 
-def run_tag(loss, delta, bootstrap, lds_power, fold, seed):
-    tag = loss if loss in ("mae", "mse") else f"huber{delta:g}"
+def run_tag(loss, delta, bootstrap, lds_power, fold, seed, head="reg"):
+    tag = head if head != "reg" else loss if loss in ("mae", "mse") else f"huber{delta:g}"
     if bootstrap:
         tag += f"_boot{bootstrap}"
     if lds_power:
@@ -91,6 +107,8 @@ def bootstrap_letters(value):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--loss", choices=["huber", "mae", "mse"], default="huber")
+    parser.add_argument("--head", choices=["reg", "dist", "gauss"], default="reg",
+                        help="output head; dist/gauss ignore --loss/--delta")
     parser.add_argument("--delta", type=float, default=5.0, help="Huber delta (BPM), ignored for mae/mse")
     parser.add_argument(
         "--bootstrap", "-bootstrap", type=bootstrap_letters, default="",
@@ -102,7 +120,7 @@ def main():
     parser.add_argument("--lds-power", type=float, default=0.0, help="LDS loss-weight power p (0 = off)")
     args = parser.parse_args()
     # default run keeps writing best.pt, others get a tagged checkpoint
-    tag = run_tag(args.loss, args.delta, args.bootstrap, args.lds_power, args.fold, args.seed)
+    tag = run_tag(args.loss, args.delta, args.bootstrap, args.lds_power, args.fold, args.seed, args.head)
     checkpoint_path = CHECKPOINT_PATH if tag == "huber5" else CHECKPOINT_PATH.with_name(f"best_{tag}.pt")
 
     torch.manual_seed(args.seed)
@@ -154,9 +172,8 @@ def main():
     ) if high.any() else None
 
     print(f"training on {DEVICE}, loss={tag}, checkpoint={checkpoint_path.name}")
-    model = CNNBiLSTM().to(DEVICE)
-    loss_fn = (nn.HuberLoss(reduction="none", delta=args.delta) if args.loss == "huber"
-               else {"mae": nn.L1Loss, "mse": nn.MSELoss}[args.loss](reduction="none"))
+    model = CNNBiLSTM(head=args.head).to(DEVICE)
+    loss_fn = make_loss(args.head, args.loss, args.delta)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-5

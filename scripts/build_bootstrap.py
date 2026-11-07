@@ -111,7 +111,10 @@ def main():
             signals, fs = read_channels(DATA_ROOT / row["file_path"], ["PPG"])
             ppg = bandpass_filter(signals["PPG"], fs)
             for start, factor, label in file_picks:
-                window, _ = warp_window(ppg, curves[file_idx], fs, start, factor)
+                res = warp_window(ppg, curves[file_idx], fs, start, factor)
+                if res is None:  # f < 1 span ending within ~3 ms of the file end (source_label can't see len(ppg))
+                    continue
+                window, _ = res
                 letter = "L" if label < 100 else "H"
                 ws, ls = out[(letter, row["global_subject_id"])]
                 ws.append(window)

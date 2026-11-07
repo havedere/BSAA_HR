@@ -101,3 +101,14 @@ def test_plan_skips_sources_masked_out():
     picks, _ = plan_bootstrap(hr_curves, {(120, 130): 50}, np.random.default_rng(0), source_ok=source_ok)
 
     assert picks and all(file_idx == 1 for file_idx, _, _, _ in picks)
+
+
+def test_warp_window_none_at_file_end_while_source_label_ok():
+    # f < 1 span ending ~ms before the file end: source_label passes, warp_window cannot (build_bootstrap skips it)
+    from bpm.timewarp import source_label, warp_window
+
+    hr = np.full(100, 70.0)
+    ppg = np.zeros(10000)
+    f = (100 - 89 - 0.0005) / 13  # start + 13 f = 0.5 ms before the end; fails when that gap < (1 - f) / 100 s
+    assert source_label(hr, 89, f) is not None
+    assert warp_window(ppg, hr, 100, 89, f) is None

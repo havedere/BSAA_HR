@@ -36,3 +36,23 @@ def test_drops_trailing_partial_window():
     # only one full 2s window fits: i=0, samples[0,20)
     assert windows.shape == (1, 1, 20)
     assert labels[0] == np.mean(hr_curve[0:2])
+
+
+def test_all_windows_labelled_subset_equals_make_windows():
+    from bpm.windowing import all_windows
+
+    rng = np.random.default_rng(0)
+    fs = 10.0
+    channels = {"PPG": rng.normal(size=987)}  # 98.7 s, trailing partial window
+    hr_curve = 60 + rng.normal(size=95)  # curve ends before the signal
+    hr_curve[[7, 30, 31, 60]] = np.nan
+
+    windows, idx, labels = all_windows(channels, hr_curve, fs, window_s=10, stride_s=2)
+    ref_w, ref_l = make_windows(channels, hr_curve, fs, window_s=10, stride_s=2)
+
+    assert len(windows) == (987 - 100) // 20 + 1
+    np.testing.assert_array_equal(idx, np.arange(len(windows)))
+    lab = ~np.isnan(labels)
+    np.testing.assert_array_equal(windows[lab].astype(np.float32), ref_w)
+    np.testing.assert_allclose(labels[lab], ref_l, rtol=1e-6)
+    np.testing.assert_array_equal(windows[3, 0], channels["PPG"][60:160])

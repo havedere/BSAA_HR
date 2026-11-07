@@ -4,9 +4,8 @@ from .edf_io import read_channels
 from .ground_truth import ecg_quality_mask, ecg_to_hr_curve
 from .manifest import MULTISITE_DIR
 from .preprocessing import bandpass_filter
-from .windowing import make_windows
+from .windowing import STRIDE_S, WINDOW_S, make_windows
 
-WINDOW_S, STRIDE_S = 10, 2
 MULTISITE_CAP_PER_SUBJECT = 2000
 CAP_SEED = 42
 

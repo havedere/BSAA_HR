@@ -1,6 +1,7 @@
 # Code implementation plan: CV, LDS, heads, quality gate, smoothing
 
 Status: PRELIMINARY (2026-11-05), revised after review rounds 1-3. Not approved for execution.
+Progress: Step 0A code done and committed (2026-11-06). Step 0B code done, uncommitted (2026-11-07, tickets 08-15; the (counts + 1) label prior broke tau 1 and the HMM emission; both dropped 2026-11-07, see run plan "Decisions after Step 0B smokes").
 No code changes, deletions or training runs until the user explicitly acknowledges a final version.
 Method definitions, metrics and selection rules: `.scratch/model-run-plan/spec.md` (this plan implements them).
 Order: Step 0A (needed for Stages A-B) now; Step 0B only after the Stage A/B report.
@@ -68,8 +69,8 @@ Branch `feature/cv-run-plan` off master; commit only on user go-ahead; no push.
   `hit_max_epochs`; balanced val logged with 4 decimals; `evaluate.py --fold 0` with 1 and 2 ckpts writes val+test.
 - Leakage: per fold, bootstrap subjects ⊆ fold train; quotas, LDS density, prior and q from fold-train subjects
   only (asserted in code); aggregator LTGO test passes.
-- LDS on real fold-0 train labels: clipped share, max and max/min printed (expect 0.5-1.2%, max <= 20,
-  max/min 76-89 at p = 1).
+- LDS on real fold-0 train labels: clipped share, max and max/min printed (expect 1.1-1.5% at the cap,
+  max = 20, max/min 51-61 at p = 1; measured 2026-11-06, see run plan Method 2).
 - 0B smokes: dist/gauss train on fold 0; gate keeps ≈90% of val in coverage mode, suppressed MAE > passed MAE;
   smoothing on one multisite + one wrist-finger recording (labels match `make_windows`, start times exact,
   windows/s and EDF read time printed).

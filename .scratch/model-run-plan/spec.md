@@ -51,8 +51,9 @@ Goal: a result that does not hinge on 3 test subjects or one seed, plus a direct
   each window counted with its sampler weight, convolved with a Gaussian (σ = 2 BPM).
 - Weights (real windows only): w = density^-p -> divide by its sampler-weighted mean -> repeat {clip at 20,
   renormalise to sampler-weighted mean 1} until max <= 20 (converges in a few iterations; a single clip+renorm
-  left max 25-27, review round 3). Unit-free. Expected at p = 1 on real folds: 0.5-1.2% of windows clipped,
-  max/min 76-89.
+  left max 25-27, review round 3). Unit-free. Expected at p = 1 on real folds (measured 2026-11-06 with
+  the iterated rule): 1.1-1.5% of windows at the cap (0.8-1.0% sampler-weighted), max = 20, max/min 51-61.
+  (Earlier 0.5-1.2% / 76-89 came from a single clip+renorm pass; bin edges and padding change < 0.1 pp.)
 - Synthetic bootstrap windows: weight 1, outside the mean-1 constraint.
 - Training loss = mean(w · per-window loss) over the sampled batch; val unweighted. `p` ∈ {0 (off), 0.5, 1}.
 
@@ -61,8 +62,9 @@ Goal: a result that does not hinge on 3 test subjects or one seed, plus a direct
 - Target: Gaussian centred on the label, σ = 2 BPM, normalised. Loss: `nn.CrossEntropyLoss` with probability
   targets, `reduction="none"`.
 - Decode: expected value over bins within ±10 BPM of the argmax (primary); plain argmax also reported.
-- Logit adjustment (inference-only): `logits − τ·log(prior)`, τ ∈ {0, 1}; prior from raw fold-train window
-  counts: (Gaussian-smoothed counts + 1) / (N + 191) (191 bins, 67 with zero raw count on all data).
+- ~~Logit adjustment (inference-only): `logits − τ·log(prior)`, τ ∈ {0, 1}; prior from raw fold-train window
+  counts: (Gaussian-smoothed counts + 1) / (N + 191) (191 bins, 67 with zero raw count on all data).~~
+  Dropped 2026-11-07: τ = 0 only, see "Decisions after Step 0B smokes".
 - Uncertainty: std of the curve.
 
 ## Method 4: uncertainty scores + quality gate (abstention)
@@ -91,7 +93,7 @@ no pulse no model can recover HR.
   posterior std; limit refitted on val sequence windows, same two operating points).
 - **Smoothers (all tried, chosen with the selection rule):** centred median (k windows); Kalman + RTS
   (`R_t = (c · s_t)²`, `s_t` = model score; reg head without score: constant R = c²); HMM forward-backward
-  (dist): emission = softmax / prior (= τ=1 adjusted output; scaled likelihood, so the train prior is not
+  (dist; emission changed to plain softmax 2026-11-07, see "Decisions after Step 0B smokes"): emission = softmax / prior (= τ=1 adjusted output; scaled likelihood, so the train prior is not
   multiplied in at every step), Gaussian transition σ_T per step with a uniform floor 1e-3, banded at
   ±5·σ_T·m (vectorised), floor added outside the band.
 - **q / σ_T** from fold-train 10 s-mean labels at 2 s step (MAD·1.4826; measured multisite 0.94 BPM,
@@ -149,7 +151,7 @@ Union U × p {0.5, 1} × 5 folds × 3 seeds, paired to Stage A (same seeds). p_k
 
 ## Step 5: Stage C — dist and gauss heads [after Step 0B]
 2 heads × (union over k of {(boot_k, p_k)} ∪ {(basic, 0)}) × 5 folds × 3 seeds = 30-360 runs (~1.5-18 h);
-pre-registered cap: at most 3 (boot, p) pairs, by per-k votes. dist evaluated with τ ∈ {0, 1}.
+pre-registered cap: at most 3 (boot, p) pairs, by per-k votes. dist evaluated with τ = 0 only (τ = 1 dropped 2026-11-07).
 
 ## Step 6: Stage D — seed ensemble (minutes)
 Per k: top 2 configs of the Stage C candidate set by key; union run.
@@ -184,5 +186,21 @@ measured yet (smoke test).
   rates/lengths; out of scope unless the from-scratch model plateaus.
 - **Viterbi smoother**: dropped in review round 1 (variant of HMM forward-backward).
 - **Full nested CV** (inner CV per outer fold): would remove the residual LTGO leak; ~4× the runs.
+
+## Decisions after Step 0B smokes (2026-11-07)
+- **HMM emission = model softmax, no prior division** (supersedes "emission = softmax / prior" in Method 5).
+  The label prior (Gaussian-smoothed fold-train counts + 1, normalised) gives never-seen bins (150-220 BPM)
+  log prior -10.4 vs -3.5 at the mode; dividing by it lifts those bins ~7 logits at every window, and the
+  transition model cannot pull the path back. Fold-0 smoke (dist, patience 2), val subject-macro MAE for
+  m = 1/2/4: with prior 14.29 / 13.24 / 9.15, without 3.68 / 3.53 / 3.52 (Kalman 3.52). Cost: the train prior
+  is multiplied in once per step (the reason for the scaled likelihood); accepted, since the transition model
+  is the main effect.
+- **τ = 1 logit adjustment dropped** (Method 3, Stage C): dist is evaluated with τ = 0 only, so no label prior
+  is used anywhere in the pipeline. Same floor problem as the HMM: fold-0 smoke multisite val MAE 6.4 -> 35.6,
+  30% of windows > 20 BPM off, mostly decoded to 150-220 BPM. Rare-BPM bias is left to bootstrap and LDS.
+  `evaluate.py --tau` stays in the code (default 0), unused.
+- **Architecture frozen (2026-11-07, user decision).** Model (CNN-BiLSTM, reg / dist / gauss heads), training,
+  CV/selection, quality gate and smoothing pipeline stay as implemented in Steps 0A + 0B. No changes except
+  bug fixes and error fixes; anything else needs an explicit user decision first.
 
 No training run starts before the user acknowledges this plan; no push.
