@@ -1,5 +1,7 @@
 # Handoff: CV run plan, Step 0A done (2026-11-06)
 
+> **Superseded 2026-11-07:** Steps 0A, 0B and 1 are done, the old fixed-split results and `best.pt` are deleted, and the run plan is frozen to the story design (135 runs, see `.scratch/model-run-plan/spec.md`, "Story design"). Next: Stage A.
+
 Branch `feature/cv-run-plan` (off master, not pushed). Specs: `.scratch/cv-code-impl/spec.md` (code),
 `.scratch/model-run-plan/spec.md` (runs, metrics, selection). Tickets: `.scratch/cv-code-impl/issues/01..07`, all `Status: done`.
 

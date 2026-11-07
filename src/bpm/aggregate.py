@@ -12,7 +12,7 @@ import pandas as pd
 from scipy.stats import wilcoxon
 
 K = 5
-BASELINE = "huber5"  # Huber delta 5, basic, LDS off
+BASELINE = "mse"  # MSE, basic, LDS off (run plan story design 2026-11-07)
 BIN_EDGES = [40, 60, 70, 80, 90, 100, 110, 120, 130, np.inf]
 N_BOOT = 1000
 RNG_SEED = 0

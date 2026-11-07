@@ -13,7 +13,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python scripts/build_cache.py      # cache/windows/<subject>.npz (long-running)
 .venv/bin/python scripts/make_folds.py       # cache/folds.json (5-fold CV subject groups)
 .venv/bin/python scripts/build_bootstrap.py  # optional: cache/bootstrap/{H,L}/<subject>.npz (long-running)
-.venv/bin/python scripts/train.py            # cache/best.pt (--bootstrap HL: cache/best_huber5_bootHL.pt)
+.venv/bin/python scripts/train.py            # cache/best_huber5.pt (--bootstrap HL: cache/best_huber5_bootHL.pt)
 .venv/bin/python scripts/evaluate.py         # MAE/RMSE per sub-dataset, cache/plots/
 .venv/bin/python scripts/aggregate_runs.py   # CV runs: cache/results/{runs,summary}.csv
 ```
@@ -94,7 +94,7 @@ Collects the CV runs: reads the sidecars in `cache/runs/` and the predictions in
 
 - Per run: subject-macro balanced MAE (mean per-subject MAE per sub-dataset, averaged over the two), window-pooled balanced MAE, bin-balanced MAE, per split.
 - Selection is leave-test-group-out: the decision for test group k only uses validation errors from folds whose validation group is not k. Ranking key = per-subject validation MAE, median over seeds, paired against the best config; ties within 1 SE (subject bootstrap) are broken by bin-balanced MAE. Also prints a global selection over all folds, labelled optimistic.
-- Out-of-fold test MAE against the baseline (Huber delta 5, no bootstrap, no LDS): Wilcoxon signed-rank per sub-dataset, Holm-corrected across configs.
+- Out-of-fold test MAE against the baseline (MSE, no bootstrap, no LDS): Wilcoxon signed-rank per sub-dataset, Holm-corrected across configs.
 - Warns about runs trained on another `folds.json` and sidecars without predictions.
 - Output: `cache/results/runs.csv` (one row per run or ensemble) and `cache/results/summary.csv` (one row per config).
 

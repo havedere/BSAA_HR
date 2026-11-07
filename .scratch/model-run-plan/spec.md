@@ -1,7 +1,8 @@
 # Run plan: 5-fold subject CV + LDS + distribution head + quality gate + offline smoothing
 
-Status: PRELIMINARY (2026-11-05), revised after review rounds 1-3. Not approved for execution.
-No code changes, deletions or training runs until the user explicitly acknowledges a final version.
+Status: FROZEN (user approval 2026-11-07). Revised after review rounds 1-3; grid cut to the story design
+2026-11-07 (see "Story design"). No changes to the plan except bug/error fixes; anything else needs an explicit
+user decision first.
 Code needed for these runs: `.scratch/cv-code-impl/spec.md` (Step 0A before Stage A, Step 0B before Stage C).
 
 ## Context
@@ -73,6 +74,7 @@ no pulse no model can recover HR.
 - **Scores**, each mapped to "higher = less trustworthy": `−skewness` (Elgendi 2016), `1 − spectral prominence`
   (0.6-3.5 Hz power within ±0.1 Hz of the dominant peak), seed-ensemble spread, dist curve std, gauss σ, MC
   dropout std (only `nn.Dropout` on, BatchNorm eval, 20 passes; single dropout before the last Linear).
+  gauss σ: dropped with the gauss head (story design 2026-11-07).
 - **Gate**: (`bpm`, `score`, `ok = score <= limit`); `ok = false` -> "value too uncertain"; raw `bpm` saved.
 - **Limit fitted on the fold's val, applied to its test.** Operating points: 90% val coverage; largest limit with
   passed val subject-macro balanced MAE <= 5 BPM (none qualifies -> "infeasible", fall back to the coverage
@@ -108,13 +110,15 @@ no pulse no model can recover HR.
   j ≠ k-1 (fold j's val is group j+1, so group k's val errors never enter decision k; verified in review
   round 3). Decisions are made 5 times (one per k); stages run the **union** of the per-k candidate lists.
   Residual, documented: models used in decision k were trained on group k (indirect only).
-- **Decision unit:** decision k = argmin of the ranking key over a stated candidate set C_k, then the tie set and
-  tie-break. The chosen config's components define "best": loss_k, boot_k, p_k, head_k.
-  - Stage A: C_k = all 20 configs -> top-3_k = the 3 lowest keys.
-  - Stage B: C_k = top-3_k × p {0, 0.5, 1} -> p_k (if any p = 0 config is in the tie set, p_k = 0, no tie-break).
-  - Stage C: C_k = Stage-B winner_k plus the dist/gauss runs with (boot_k, p_k) -> head_k.
-  - D/E/F: top 2 of the Stage C candidate set by key; smoother and gate score: argmin over their candidates.
-- **Global selection** (all val pooled) also reported, labelled optimistic; gap to LTGO = selection optimism.
+- **Decision unit:** decision = argmin of the ranking key over a stated candidate set, then the tie set and
+  tie-break. **Story design (2026-11-07): one winner per step from the global decision** (all val folds pooled),
+  so every stage trains one config line; the 5 LTGO decisions are reported next to it as a check (disagreement
+  = selection uncertainty, gap = selection optimism).
+  - Stage A: candidates Huber δ10, MAE, MSE (basic) -> L* (best loss).
+  - Stage B: L* + HL × p {0, 0.5, 1} -> p_B (if a p = 0 config is in the tie set, p_B = 0, no tie-break).
+  - Stage C: dist + HL × p {0, 0.5, 1} -> p_C (same rule).
+  - Final: argmin of {Stage B winner, Stage C winner} -> head. D/E/F run on both winners; smoother and gate
+    score: argmin over their candidates.
 - **Loss:** loss_k is the loss of decision k's argmin config; reported "indistinguishable" if every loss occurs
   among the tie-set configs.
 - **Ranking key:** per-subject val MAE, **median over the 3 seeds** (a collapsed seed cannot move it), paired vs
@@ -122,7 +126,7 @@ no pulse no model can recover HR.
   bootstrap over subjects stratified by sub-dataset (cells with < 3 usable seeds: median of what exists,
   flagged). Tie set = configs within 1 SE of the argmin; tie-break: lowest bin-balanced val MAE (pooled val of
   the allowed folds), reported with seed spread and subject counts.
-- **Tests vs baseline** (Huber δ5, basic, LDS off): paired per-subject OOF test MAE, Wilcoxon signed-rank
+- **Tests vs baseline** (MSE, basic, LDS off; was Huber δ5 before the story design): paired per-subject OOF test MAE, Wilcoxon signed-rank
   **per sub-dataset** (multisite 20, wrist-finger 27 subjects), Holm across configs. CIs: subject bootstrap.
 - **OOF value:** per seed (then mean ± std over seeds) and for the ensemble; both reported.
 - **Collapsed runs** (best epoch <= 2): not rerun; excluded from decisions only through the seed median above,
@@ -137,30 +141,45 @@ no pulse no model can recover HR.
   the measured rate) as their subjects enter train, plus the per-file PPG check (~15 min total, cached).
   HR curves are complete only after all 5 folds. Budget 30-45 min.
 
-## Step 2: Stage A — loss × bootstrap under CV (~300 runs, ~11-15 h)
-20 configs (Huber δ5/10/20, MAE, MSE × basic/+L/+H/+HL) × 5 folds × 3 seeds {42, 1, 2}, LDS off, head reg.
+## Story design (2026-11-07, user decision)
+Uni project: one red thread through the training, each stage answers one question. 135 runs, ~5.5 h GPU
+(was ~480-540 runs, 20-30 h). Every config: 5 folds × 3 seeds {42, 1, 2}.
+
+| Stage | Question | Configs | Runs |
+|---|---|---|---|
+| A basic | which loss? | Huber δ10, MAE, MSE; no bootstrap, LDS off, reg | 45 |
+| problem | pull to mid values | none (per-bin bias and pred-vs-truth slope from Stage A preds) | 0 |
+| B fix: data + loss weights | does bootstrap / LDS close the gap? | L* + HL × p {0, 0.5, 1} | 45 |
+| C fix: output | does a distribution head help? | dist + HL × p {0, 0.5, 1} | 45 |
+| D-F reliability | ensemble, gate, smoothing | Stage B and C winners | 0 |
+
+- Dropped: Huber δ5 and δ20, bootstrap L-only / H-only, the gauss head (training and gauss σ score).
+- p = 0 in B and C isolates the bootstrap effect, so the story keeps its attribution: basic -> +bootstrap HL
+  -> +LDS (B) -> dist head (C).
+- Greedy by design: the best loss without bootstrap may not be the best with it; stated as a limitation.
+- Baseline for the tests: MSE basic (`aggregate.BASELINE = "mse"`).
+
+## Step 2: Stage A — basic losses (45 runs, ~2 h)
+3 configs (Huber δ10, MAE, MSE; basic) × 5 folds × 3 seeds, LDS off, head reg.
 Measured basis: ~2.5 s/epoch + ~25 s overhead; patience 20 -> ~35-65 epochs -> 2-3 min per run incl. evaluate.
 Runner: throwaway bash in scratchpad; train then evaluate `--fold`; continue past failures; one status line per
 run. Order: seed-major, then fold, then config.
 
-## Step 3: report Stage A; per-k top-3 lists (LTGO); Stage B runs their union U.
-Pre-registered cap: if |U| > 5, run the 5 configs with the most per-k votes (ties: lower global key).
+## Step 3: report Stage A -> L*; the problem (per-bin bias, pred-vs-truth slope, error in the 120s bin).
 
-## Step 4: Stage B — LDS (30 × |U| runs: 90-150, ~4-7 h with the cap)
-Union U × p {0.5, 1} × 5 folds × 3 seeds, paired to Stage A (same seeds). p_k per decision rule above.
+## Step 4: Stage B — L* + bootstrap HL × LDS p {0, 0.5, 1} (45 runs, ~2 h) -> p_B.
 
-## Step 5: Stage C — dist and gauss heads [after Step 0B]
-2 heads × (union over k of {(boot_k, p_k)} ∪ {(basic, 0)}) × 5 folds × 3 seeds = 30-360 runs (~1.5-18 h);
-pre-registered cap: at most 3 (boot, p) pairs, by per-k votes. dist evaluated with τ = 0 only (τ = 1 dropped 2026-11-07).
+## Step 5: Stage C — dist head + bootstrap HL × LDS p {0, 0.5, 1} (45 runs, ~2 h) -> p_C
+`--head dist` ignores `--loss`. dist evaluated with τ = 0 only (τ = 1 dropped 2026-11-07).
 
 ## Step 6: Stage D — seed ensemble (minutes)
-Per k: top 2 configs of the Stage C candidate set by key; union run.
+3-seed ensemble of the Stage B and Stage C winners, per fold.
 
 ## Step 7: Stage E — quality gate (minutes)
-`gate_report.py` on Stage D's configs; MC dropout only on these checkpoints.
+`gate_report.py` on Stage D's ensembles; MC dropout (evaluation only) on these checkpoints.
 
 ## Step 8: Stage F — offline smoothing
-Per k: chosen config's ensemble; Method 5 pipeline. GPU ~97k windows/s (measured in review); EDF reading not
+Per fold: final config's ensemble (and the other winner for comparison); Method 5 pipeline. GPU ~97k windows/s (measured in review); EDF reading not
 measured yet (smoke test).
 
 ## Verification (runs)
@@ -168,8 +187,8 @@ measured yet (smoke test).
 - Code-level checks: see `.scratch/cv-code-impl/spec.md`.
 
 ## Open for user
-- Reviewer suggestion (round 1): drop Huber δ10/δ20, the gauss head and MC dropout (fixed-split val spread of
-  the Huber variants 0.12 BPM). Kept for now: the user set the 20-config grid.
+- Resolved 2026-11-07 by the story design: grid cut to 135 runs, gauss head dropped. MC dropout kept as an
+  evaluation-only score (no training cost).
 - Changes from review rounds 2-3 that alter earlier decisions: collapsed runs are not rerun (seed median in
   decisions instead); Step 0 is split so heads/gate/smoothing are coded only after Stage A/B results;
   wrist-finger gets H bins [110,130) under CV; run caps for Stages B and C.
@@ -203,4 +222,4 @@ measured yet (smoke test).
   CV/selection, quality gate and smoothing pipeline stay as implemented in Steps 0A + 0B. No changes except
   bug fixes and error fixes; anything else needs an explicit user decision first.
 
-No training run starts before the user acknowledges this plan; no push.
+Plan acknowledged and frozen by the user 2026-11-07; training runs may start. No push.

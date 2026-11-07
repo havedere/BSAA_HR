@@ -115,16 +115,16 @@ def test_holm():
 
 
 def test_vs_baseline_wilcoxon_per_dataset():
-    w = make_windows({"huber5": 1.0, "mse": 1.0}, noise=1.0)
-    w.loc[w["config"] == "mse", "err"] += np.where(w.loc[w["config"] == "mse", "dataset"] == "ms", 1.0, 0.0)
+    w = make_windows({"mse": 1.0, "huber10": 1.0}, noise=1.0)
+    w.loc[w["config"] == "huber10", "err"] += np.where(w.loc[w["config"] == "huber10", "dataset"] == "ms", 1.0, 0.0)
     v = vs_baseline(w)
     t = w[w["split"] == "test"]
     per_subj = t.groupby(["config", "dataset", "subject", "seed"])["err"].mean().groupby(
         ["config", "dataset", "subject"]).mean().unstack("config")
     ms = per_subj.loc["ms"]
-    assert v.loc["mse", "p_ms"] == pytest.approx(wilcoxon(ms["mse"] - ms["huber5"]).pvalue)
-    assert np.isnan(v.loc["huber5", "p_ms"])
-    assert v.loc["mse", "diff_ci_lo"] > 0  # +0.5 balanced difference, all subjects worse on ms
+    assert v.loc["huber10", "p_ms"] == pytest.approx(wilcoxon(ms["huber10"] - ms["mse"]).pvalue)
+    assert np.isnan(v.loc["mse", "p_ms"])
+    assert v.loc["huber10", "diff_ci_lo"] > 0  # +0.5 balanced difference, all subjects worse on ms
 
 
 def test_summarize_survives_one_fold_two_seeds():
